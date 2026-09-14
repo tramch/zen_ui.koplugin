@@ -1,12 +1,15 @@
 local defaults = require("config/defaults")
 local HomePresets = require("modules/filebrowser/patches/home/home_presets")
 local PresetStore = require("config/preset_store")
+local HardcoverToken = require("config/hardcover_token")
+local GoogleBooksKey = require("config/google_books_key")
 local HomeQuotes = require("modules/filebrowser/patches/home/home_quotes")
 local utils = require("common/utils")
 local FontLanguage = require("common/font_language")
 local LibraryFontPath = require("common/library_font_path")
 local plugin_root = require("common/plugin_root") or ""
 local BrandMigration = require("common/brand_migration")
+local PluginScan = require("modules/menu/app_launcher/plugin_scan")
 
 local LEGACY_KEY = "zen_ui_config"  -- legacy G_reader_settings key; cleanup only
 local HYPERREADABLE_LIBRARY_FONT = LibraryFontPath.BUNDLED_DEFAULT
@@ -15,6 +18,17 @@ local _zen_settings_file = nil  -- cached LuaSettings instance
 local _current_config    = nil  -- in-memory cache for M.get()
 
 local M = {}
+
+local function same_table(left, right)
+    if type(left) ~= "table" or type(right) ~= "table" then return false end
+    for key, value in pairs(left) do
+        if right[key] ~= value then return false end
+    end
+    for key, value in pairs(right) do
+        if left[key] ~= value then return false end
+    end
+    return true
+end
 
 local function get_settings_path()
     return PresetStore.rootDir() .. "/config.lua"
@@ -54,11 +68,7 @@ local function migrate_brand_plugin_paths(stored)
 end
 
 local function merged_with_defaults(stored)
-    local cfg = utils.deepcopy(defaults)
-    if type(stored) == "table" then
-        utils.deepmerge(stored, cfg)
-        cfg = stored
-    end
+    local cfg = type(stored) == "table" and stored or {}
     utils.deepmerge(cfg, defaults)
     return cfg
 end
@@ -94,6 +104,13 @@ local function normalize_renamed_keys(cfg)
     if cfg.features.browser_hide_up_folder == nil
        and cfg.features.browser_up_folder ~= nil then
         cfg.features.browser_hide_up_folder = cfg.features.browser_up_folder
+        changed = true
+    end
+
+    if cfg.features.status_bar == false then
+        cfg.features.status_bar = true
+        cfg.status_bar = type(cfg.status_bar) == "table" and cfg.status_bar or {}
+        cfg.status_bar.left_order, cfg.status_bar.center_order, cfg.status_bar.right_order = {}, {}, {}
         changed = true
     end
 
@@ -604,7 +621,7 @@ local function migrate_folder_path_settings(cfg)
             for slot, cover_path in pairs(slots) do
                 local extension = type(cover_path) == "string"
                     and cover_path:lower():match("%.([^./]+)$") or nil
-                if extension ~= "jpg" then
+                if extension ~= "jpg" and extension ~= "jpeg" then
                     slots[slot] = nil
                     changed = true
                 end
@@ -1028,6 +1045,12 @@ local function migrate_settings_files()
     if HomeQuotes.ensureFile() then
         changed = true
     end
+    if HardcoverToken.ensureFile() then
+        changed = true
+    end
+    if GoogleBooksKey.ensureFile() then
+        changed = true
+    end
     if migrate_home_quote_font_size() then
         changed = true
     end
@@ -1194,6 +1217,10 @@ function M.load()
     stored, migrated_group = migrate_legacy_group_view_keys(stored)
     stored, migrated_owned = migrate_legacy_owned_keys(stored)
     local cfg = merged_with_defaults(stored)
+    local installed_plugins = PluginScan.installed()
+    local installed_plugins_changed = installed_plugins ~= nil
+        and not same_table(cfg._meta.installed_plugins, installed_plugins)
+    if installed_plugins then cfg._meta.installed_plugins = installed_plugins end
     local migrated_renamed
     cfg, migrated_renamed = normalize_renamed_keys(cfg)
     local migrated_substring, migrated_updater, migrated_folder_paths, migrated_fbc, migrated_bim
@@ -1218,7 +1245,7 @@ function M.load()
             or migrated_changed_defaults or migrated_home_lock
             or migrated_folder_paths or migrated_rakuyomi or migrated_page_browser
             or migrated_brand_paths or migrated_owned or initialized_brand_marker
-            or recovered_fresh_config then
+            or recovered_fresh_config or installed_plugins_changed then
         M.save(cfg)
     end
     if migrated_file_config then

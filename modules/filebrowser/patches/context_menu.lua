@@ -133,6 +133,30 @@ local function apply_context_menu()
         return align_button_dialog_icons(ButtonDialog:new(options))
     end
 
+    -- Keep every PathChooser navigable above a locked home folder.
+    if not PathChooser._zen_navigation_patched
+            and type(PathChooser.genItemTableFromPath) == "function" then
+        PathChooser._zen_navigation_patched = true
+        local orig_pathchooser_gen_items = PathChooser.genItemTableFromPath
+
+        function PathChooser:genItemTableFromPath(path)
+            local items = orig_pathchooser_gen_items(self, path)
+            local parent = type(path) == "string" and require("ffi/util").dirname(path)
+            if type(parent) ~= "string" or parent == path then
+                return items
+            end
+            for _i, item in ipairs(items) do
+                if item.is_go_up then return items end
+            end
+            table.insert(items, self.show_current_dir_for_hold and 2 or 1, {
+                text = BD.mirroredUILayout() and BD.ltr("../ \u{2B06}") or "\u{2B06} ../",
+                path = path .. "/..",
+                is_go_up = true,
+            })
+            return items
+        end
+    end
+
     -- Keep path-keyed settings and cover references aligned with successful moves.
     local orig_FileManager_moveFile = FileManager.moveFile
     FileManager.moveFile = function(self, from, to, ...)
@@ -797,6 +821,7 @@ local function apply_context_menu()
 
             local file               = item.path
             local is_file            = item.is_file
+            local is_kindle_book     = item._zen_kindle_book == true
             local is_not_parent_folder = not item.is_go_up
             local is_home_dir = (not is_file) and paths.isHomeRoot(file)
             -- Only the primary library root uses global sort/display; additional
@@ -1090,11 +1115,8 @@ local function apply_context_menu()
                                 end
                                 if bookinfo.series then
                                     local s = BD.auto(bookinfo.series)
-                                    if bookinfo.series_index then
-                                        series_str_local = string.format("%s #%.4g", s, bookinfo.series_index)
-                                    else
-                                        series_str_local = s
-                                    end
+                                    local index = tonumber(bookinfo.series_index)
+                                    series_str_local = index and string.format("%s #%.4g", s, index) or s
                                 end
                                 if bookinfo.keywords and bookinfo.keywords ~= "" then
                                     tags_str_local = bookinfo.keywords
@@ -1655,6 +1677,33 @@ local function apply_context_menu()
                     end
                 end
 
+                if is_file then
+                    table.insert(edit_buttons, {
+                        {
+                            text = icons.edit .. "  " .. _("Edit metadata"),
+                            align = "left",
+                            callback = function()
+                                UIManager:close(edit_dialog)
+                                local bookinfo = file_manager.bookinfo
+                                if not bookinfo.showFromBookDetails then
+                                    bookinfo:show(file)
+                                    return
+                                end
+                                local function refresh_metadata(updated_file)
+                                    file = updated_file or file
+                                    require("modules/filebrowser/metadata/service")
+                                        .refreshLibrary(file_manager, file)
+                                end
+                                bookinfo:showFromBookDetails(file, nil, {
+                                    on_renamed = refresh_metadata,
+                                    on_saved = refresh_metadata,
+                                    on_restored = refresh_metadata,
+                                })
+                            end,
+                        },
+                    })
+                end
+
                 local allow_delete = zen_plugin
                     and type(zen_plugin.config) == "table"
                     and type(zen_plugin.config.context_menu) == "table"
@@ -1691,21 +1740,8 @@ local function apply_context_menu()
                             close_dialog()
                             require("modules/reader/book_details").showFile(file, {
                                 config = zen_plugin and zen_plugin.config,
-                                edit_callback = function(details_widget)
-                                    local bookinfo = file_manager.bookinfo
-                                    if bookinfo.showFromBookDetails then
-                                        bookinfo:showFromBookDetails(file, nil, {
-                                            close_parent_callback = function()
-                                                if details_widget
-                                                        and type(details_widget.onClose) == "function" then
-                                                    details_widget:onClose()
-                                                end
-                                            end,
-                                        })
-                                    else
-                                        bookinfo:show(file)
-                                    end
-                                end,
+                                plugin = zen_plugin,
+                                home_context = item._zen_home_context == true,
                             })
                         end,
                     },
@@ -1831,7 +1867,7 @@ local function apply_context_menu()
             end
 
 
-            if is_file then
+            if is_file and not is_kindle_book then
                 local ReadCollection = require("readcollection")
 
                 if item._zen_collection_name then
@@ -2038,7 +2074,11 @@ local function apply_context_menu()
                         align = "left",
                         callback = function()
                             close_dialog()
-                            refresh_book_info()
+                            if type(item._zen_refresh) == "function" then
+                                item._zen_refresh(file)
+                            else
+                                refresh_book_info()
+                            end
                         end,
                     },
                 })
@@ -2121,7 +2161,7 @@ local function apply_context_menu()
 
             if not is_file and is_not_parent_folder then
                 local SORT_OPTIONS = {
-                    { key = "title", text = "\u{F04BB}  " .. _("Title") },
+                    { key = "title", text = "\u{F031}  " .. _("Title") },
                     { key = "title_natural", text = "\u{F04BB}  " .. _("Title natural") },
                     { key = "strcoll", text = icons.filename .. "  " .. _("Filename") },
                     { key = "authors", text = "\u{F0013}  " .. _("Authors") },
@@ -2343,7 +2383,7 @@ local function apply_context_menu()
                 })
             end
 
-            if not item._zen_home_context and not is_virtual_folder then
+            if not is_virtual_folder and not is_kindle_book then
                 table.insert(buttons, {
                     {
                         text = "\u{F090C}  " .. _("Edit") .. "  " .. submenu_arrow,

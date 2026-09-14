@@ -6,7 +6,7 @@ settingsPath: ''
 order: 5
 ---
 
-<!-- Documentation current through ZenOS v3.0.0. -->
+<!-- Documentation current through ZenOS v3.3.0. -->
 
 ![zenos.koplugin folder inside the KOReader plugins directory](/images/zen_os/plugins_folder.webp)
 
@@ -34,8 +34,8 @@ Already using Zen UI? Update from its settings page instead of copying ZenOS
 beside it. The updater preserves your settings and completes the rename after
 restarting KOReader.
 
-The migration performs two automatic restarts. It keeps `settings/Zen UI` as an
-unchanged rollback snapshot and migrates a separate copy to `settings/ZenOS`.
+The migration performs two automatic restarts. It keeps `koreader/settings/Zen UI` as an
+unchanged rollback snapshot and migrates a separate copy to `koreader/settings/ZenOS`.
 If Zen UI is disabled, enable it once so the migration can run. Do not manually
 install `zenos.koplugin` beside an existing `zen_ui.koplugin` directory.
 
@@ -47,7 +47,7 @@ For a fresh installation:
    - Make sure you are copying the unzipped **folder** and **not the .zip** file itself.
 4. Restart KOReader. ZenOS will load automatically.
    - If you don't see ZenOS load, manually enable the plugin in Tools > More tools > Plugin management > ZenOS.
-   - On first launch, ZenOS guides you through setup and a short top-menu tour.
+   - On first launch, ZenOS guides you through setup, the top menu, and the Reader page browser.
 
 > The final path should look like: `.../plugins/zenos.koplugin/main.lua`
 

@@ -137,6 +137,7 @@ local function apply_quick_settings()
         gyro_icon = "quick_rotate",
         rotate_action = "cycle",
         screenshot_timer_seconds = 3,
+        tailscale_toggle_wifi = false,
         custom_buttons = {},  -- array of { id, label, icon, action }
         next_custom_id = 0,
         layout_version = 2,
@@ -294,12 +295,10 @@ local function apply_quick_settings()
         return Screen.DEVICE_ROTATED_CLOCKWISE
     end
 
-    -- Returns true if a plugin slot is loaded in the active UI; fails open if no UI yet.
-    local function hasPlugin(slot)
-        local ok_f, FM = pcall(require, "apps/filemanager/filemanager")
-        local ok_r, RU = pcall(require, "apps/reader/readerui")
-        local ui = (ok_f and FM.instance) or (ok_r and RU.instance)
-        return ui == nil or ui[slot] ~= nil
+    local function hasPlugin(name)
+        local meta = zen_plugin.config and zen_plugin.config._meta
+        local installed = type(meta) == "table" and meta.installed_plugins
+        return type(installed) ~= "table" or installed[name:lower()] == true
     end
 
     local function hasAnyPlugin(slots)
@@ -385,6 +384,12 @@ local function apply_quick_settings()
         if plugin and isCallable(plugin[tailscale_plugin.toggle]) then
             return plugin
         end
+    end
+
+    local function isTailscaleRunning(plugin)
+        if not (plugin and isCallable(plugin.isRunning)) then return false end
+        local ok, running = pcall(plugin.isRunning, plugin)
+        return ok and running == true
     end
 
     local zenfm_plugin = {
@@ -822,10 +827,7 @@ local function apply_quick_settings()
             label = _("Tailscale"),
             visible_func = function() return getTailscalePlugin() ~= nil end,
             active_func = function()
-                local plugin = getTailscalePlugin()
-                if not (plugin and isCallable(plugin.isRunning)) then return false end
-                local ok, running = pcall(plugin.isRunning, plugin)
-                return ok and running == true
+                return isTailscaleRunning(getTailscalePlugin())
             end,
             callback = function(touch_menu)
                 local plugin = getTailscalePlugin()
@@ -833,9 +835,25 @@ local function apply_quick_settings()
                     showUnavailable()
                     return
                 end
-                plugin:onToggleTailscale(function()
-                    refreshQuickSettings(touch_menu)
-                end)
+                local was_running = isTailscaleRunning(plugin)
+                local function refresh() refreshQuickSettings(touch_menu) end
+                local function toggle()
+                    plugin:onToggleTailscale(function()
+                        if was_running and config.tailscale_toggle_wifi == true
+                                and NetworkMgr:isWifiOn() then
+                            NetworkMgr:toggleWifiOff(refresh, true)
+                        else
+                            refresh()
+                        end
+                    end)
+                end
+                if was_running or isWifiConnected() then
+                    toggle()
+                elseif config.tailscale_toggle_wifi == true then
+                    NetworkMgr:toggleWifiOn(toggle, false, true)
+                else
+                    NetworkMgr:runWhenConnected(toggle)
+                end
             end,
         },
         zenfm = {
@@ -1210,6 +1228,16 @@ local function apply_quick_settings()
         if id == "incognito" then
             return require("modules/global/patches/incognito_mode").timeoutMenuItems(zen_plugin)
         end
+        if id == "tailscale" then
+            return {{
+                text = _("Toggle Wi-Fi with Tailscale"),
+                checked_func = function() return config.tailscale_toggle_wifi == true end,
+                callback = function()
+                    config.tailscale_toggle_wifi = config.tailscale_toggle_wifi ~= true
+                    zen_plugin:saveConfig()
+                end,
+            }}
+        end
         if id == "zenfm" then
             local plugin = getCandidatePlugin(zenfm_plugin)
             if not (plugin and isCallable(plugin.settings_menu)) then return {} end
@@ -1301,6 +1329,10 @@ local function apply_quick_settings()
         local padding = Screen:scaleBySize(10)
         local inner_width = panel_width - padding * 2
         local powerd = Device:getPowerDevice()
+        local meta = zen_plugin.config and zen_plugin.config._meta
+        local panel_config = type(meta) == "table"
+                and meta.quickstart_menu_tour_pending == true
+            and config_default or config
 
         local refs = {
             buttons = {},
@@ -1315,8 +1347,8 @@ local function apply_quick_settings()
         install_custom_button_defs()
 
         local visible_buttons = {}
-        for _i, id in ipairs(config.button_order) do
-            if config.show_buttons[id] and button_defs[id] then
+        for _i, id in ipairs(panel_config.button_order) do
+            if panel_config.show_buttons[id] and button_defs[id] then
                 local def = button_defs[id]
                 if not def.visible_func or def.visible_func() then
                     table.insert(visible_buttons, { id = id, def = def })
@@ -1397,7 +1429,7 @@ local function apply_quick_settings()
                 align = "center",
                 circle,
             }
-            if config.show_labels ~= false then
+            if panel_config.show_labels ~= false then
                 local label_max_width = ButtonLabelWidth.maxWidth(action_cell_width, label_side_padding)
                 group[#group + 1] = VerticalSpan:new{ width = Screen:scaleBySize(2) }
                 group[#group + 1] = TextWidget:new{
@@ -1469,12 +1501,12 @@ local function apply_quick_settings()
         }
 
         local fl_group = VerticalGroup:new{ align = "center" }
-        if config.show_frontlight and Device:hasFrontlight() then
+        if panel_config.show_frontlight and Device:hasFrontlight() then
             fl_group = build_brightness_slider(touch_menu, slider_opts)
         end
 
         local warmth_group = VerticalGroup:new{ align = "center" }
-        if config.show_warmth and Device:hasNaturalLight() then
+        if panel_config.show_warmth and Device:hasNaturalLight() then
             warmth_group = build_warmth_slider(touch_menu, slider_opts)
         end
 

@@ -1,4 +1,5 @@
 common/arrange_state.lua|unit
+common/author_sort.lua|unit
 common/book_open_tap.lua|unit
 _meta.lua|load
 main.lua|integration
@@ -43,6 +44,7 @@ common/restart.lua|unit
 common/quickstart/quickstart_pages.lua|unit
 common/quickstart/quickstart_screen.lua|unit
 common/quickstart/menu_coachmark.lua|unit
+common/quickstart/reader_tour.lua|unit
 common/quickstart/menu_tour.lua|unit
 common/shared_state.lua|unit
 common/settings_transition.lua|unit
@@ -54,7 +56,9 @@ common/ui/background.lua|unit
 common/ui/book_progress.lua|unit
 common/ui/button_label_width.lua|unit
 common/ui/corner_banner.lua|unit
+common/ui/color_text_widget.lua|unit
 common/ui/folder_cover_picker.lua|unit
+common/ui/hatching.lua|unit
 common/ui/icon_menu_item.lua|unit
 common/ui/markdown_text.lua|unit
 common/ui/truncated_text_message.lua|unit
@@ -80,12 +84,25 @@ common/widget_resources.lua|unit
 common/zen_logger.lua|unit
 common/zen_screen.lua|unit
 config/changelog.lua|unit
+config/credential_file.lua|unit
 config/defaults.lua|unit
+config/google_books_key.lua|unit
+config/hardcover_token.lua|unit
 config/manager.lua|unit
 config/preset_store.lua|unit
 config/screensaver_presets.lua|unit
 modules/filebrowser/filebrowser.lua|integration
 modules/filebrowser/folder_cover.lua|unit
+modules/filebrowser/metadata/epub.lua|unit
+modules/filebrowser/metadata/google_books.lua|unit
+modules/filebrowser/metadata/hardcover.lua|unit
+modules/filebrowser/metadata/http.lua|unit
+modules/filebrowser/metadata/isbn.lua|unit
+modules/filebrowser/metadata/open_library.lua|unit
+modules/filebrowser/metadata/service.lua|unit
+modules/filebrowser/metadata/vendor/slaxdom.lua|unit
+modules/filebrowser/metadata/vendor/slaxml.lua|unit
+modules/filebrowser/metadata_editor.lua|unit
 modules/filebrowser/patches/add_sort_title_natural.lua|integration
 modules/filebrowser/patches/automatic_series_grouping.lua|integration
 modules/filebrowser/patches/browser_display_mode_by_path.lua|integration
@@ -125,6 +142,7 @@ modules/filebrowser/patches/home/widgets/strip_controls.lua|integration
 modules/filebrowser/patches/home/widgets/strip_common.lua|integration
 modules/filebrowser/patches/home_page.lua|integration
 modules/filebrowser/patches/incompatible_plugins_check.lua|integration
+modules/filebrowser/patches/kindle_virtual_library.lua|integration
 modules/filebrowser/patches/library_background.lua|integration
 modules/filebrowser/patches/library_font.lua|integration
 modules/filebrowser/patches/menu_single_page_scroll_guard.lua|integration
@@ -186,6 +204,7 @@ modules/reader/patches/reader_footer_presets.lua|integration
 modules/reader/patches/reader_footer_time_format.lua|integration
 modules/reader/patches/reader_top_status_bar.lua|integration
 modules/reader/patches/screensaver_cover.lua|integration
+modules/reader/patches/stable_page_statistics.lua|unit
 modules/reader/patches/status_on_open.lua|integration
 modules/reader/book_info_widget.lua|integration
 modules/reader/book_details.lua|unit
@@ -199,6 +218,7 @@ modules/settings/sections/app_launcher_settings.lua|integration
 modules/settings/sections/extras_settings.lua|integration
 modules/settings/sections/global_settings.lua|integration
 modules/settings/sections/library_settings.lua|integration
+modules/settings/sections/library_settings/metadata_settings.lua|unit
 modules/settings/sections/library_settings/home_settings.lua|integration
 modules/settings/sections/library_settings/navbar_settings.lua|integration
 modules/settings/sections/library_settings/status_bar_settings.lua|integration

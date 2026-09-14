@@ -136,39 +136,29 @@ function M.build(plugin)
     IconItem.decorate(home_item, icons.settings_home)
     navbar_item.text = _("Navbar")
 
+    local library_item = IconItem.decorate({
+        text = _("Library"),
+        sub_item_table = filebrowser_items,
+        _zen_settings_root = "library",
+    }, icons.settings_library)
+
     local root_items = {
         quick_settings_item,
         app_launcher_item,
         home_item,
-        IconItem.decorate({ text = _("Library"), sub_item_table = filebrowser_items }, icons.settings_library),
+        library_item,
         IconItem.decorate(navbar_item, icons.settings_navbar),
         IconItem.decorate({ text = _("Reader"), sub_item_table = reader_items }, icons.settings_reader),
         IconItem.decorate({ text = _("Extras"), sub_item_table = extras_items }, icons.fav_add),
-        IconItem.decorate({ text = _("Updates"), sub_item_table = updates_items }, icons.update),
+        IconItem.decorate({ text = _("Updates"), sub_item_table = updates_items }, icons.upgrade),
         IconItem.decorate({
             text = _("About"),
             sub_item_table = general_items,
         }, icons.settings_about),
     }
 
-    -- Insert banner if an update is already known.
-    local update_banner = updater.build_update_available_item(plugin)
-    if update_banner then
-        table.insert(root_items, 1, update_banner)
-    end
-
-    -- KOReader reuses tab_item_table across menu open/close cycles, so
-    -- setUpdateItemTable (and build()) only runs once per session. The
-    -- tab callback fires on every switchMenuTab call — including when the
-    -- menu reopens — letting us keep the banner current in-place.
-    root_items.callback = function()
-        if root_items[1] and root_items[1]._zen_update_banner then
-            table.remove(root_items, 1)
-        end
-        local banner = updater.build_update_available_item(plugin)
-        if banner then
-            table.insert(root_items, 1, banner)
-        end
+    root_items._zen_header_action_func = function()
+        return updater.build_update_available_action(plugin)
     end
 
     -- fires when navigating back from a submenu (e.g. About after manual check).

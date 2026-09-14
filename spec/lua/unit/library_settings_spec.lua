@@ -4,6 +4,7 @@ describe("library settings", function()
     local dependencies = {
         "gettext",
         "ui/uimanager",
+        "datastorage",
         "common/paths",
         "common/library_font_path",
         "common/shared_state",
@@ -18,6 +19,8 @@ describe("library settings", function()
         "ui/widget/confirmbox",
         "ui/widget/fontchooser",
         "ui/widget/infomessage",
+        "ui/widget/pathchooser",
+        "ui/widget/spinwidget",
         "common/ui/background",
     }
 
@@ -28,6 +31,9 @@ describe("library settings", function()
         end
         ZenSpec.replace("gettext", function(text) return text end)
         ZenSpec.replace("ui/uimanager", {})
+        ZenSpec.replace("datastorage", {
+            getFullDataDir = function() return "/koreader" end,
+        })
         ZenSpec.replace("common/paths", {})
         ZenSpec.replace("common/shared_state", {})
         ZenSpec.replace("common/inline_icon_map", {})
@@ -121,6 +127,130 @@ describe("library settings", function()
         assert.are.equal(3, invalidations)
         assert.are.equal(3, clears)
         assert.are.equal(3, refreshes)
+    end)
+
+    it("uses one arrange list for Book details ordering and toggles", function()
+        local saves = 0
+        local arranged
+        ZenSpec.replace("common/ui/zen_arrange_list", {
+            show = function(opts) arranged = opts end,
+        })
+        local config = { browser_hide_up_folder = {}, features = {} }
+        local items = require("modules/settings/sections/library_settings").build({
+            config = config,
+            plugin = { saveConfig = function() saves = saves + 1 end },
+            save_and_apply = function() end,
+        })
+        local details
+        for _i, item in ipairs(items) do
+            if item.text == "Book details" then
+                details = item
+                break
+            end
+        end
+
+        assert.is_not_nil(details)
+        assert.are.equal("Book details", details.text)
+        assert.is_true(details._zen_settings_submenu)
+        assert.is_nil(details.sub_item_table)
+        details.callback()
+        assert.are.same({
+            "Authors", "Series", "Tags", "Language", "Rating", "Annotations",
+            "Note", "Pages", "Progress", "Read time", "Time remaining", "Description",
+        }, (function()
+            local labels = {}
+            for _i, item in ipairs(arranged.item_table) do
+                labels[#labels + 1] = item.text
+            end
+            return labels
+        end)())
+        for index = 1, 9 do
+            assert.is_true(arranged.item_table[index].checked_func())
+        end
+        assert.is_true(arranged.item_table[12].checked_func())
+        assert.are.equal("Navigate to tag",
+            arranged.item_table[3].sub_item_table[1].text)
+        assert.is_false(arranged.item_table[3].sub_item_table[1].checked_func())
+        assert.is_false(arranged.item_table[10].checked_func())
+        assert.is_false(arranged.item_table[11].checked_func())
+        assert.is_true(arranged.item_table[12].arrange_pinned_last)
+        assert.are.equal("Description", arranged.item_table[12].sub_title)
+        assert.is_function(arranged.item_table[12].checkmark_callback)
+        assert.is_nil(arranged.item_table[12].callback)
+        assert.are.same({ "Font: default", "Font size: 18", "Use default style" },
+            (function()
+                local labels = {}
+                for _i, item in ipairs(arranged.item_table[12].sub_item_table_func()) do
+                    labels[#labels + 1] = item.text_func and item.text_func() or item.text
+                end
+                return labels
+            end)())
+        assert.is_nil(arranged.add_title)
+        assert.is_nil(arranged.add_item_table)
+
+        arranged.item_table[3].callback()
+        assert.is_false(config.book_details.tags)
+        assert.is_false(arranged.item_table[3].checked_func())
+        assert.are.equal(1, saves)
+
+        arranged.item_table[1], arranged.item_table[9]
+            = arranged.item_table[9], arranged.item_table[1]
+        arranged.callback()
+        assert.are.same({
+            "progress", "series", "tags", "language", "rating", "annotations",
+            "note", "pages", "authors", "read_time", "time_remaining",
+        }, config.book_details.order)
+        assert.are.equal(2, saves)
+    end)
+
+    it("edits only the Book details description font", function()
+        local arranged
+        local shown
+        local saves = 0
+        local updates = 0
+        package.loaded["ui/uimanager"].show = function(_self, widget) shown = widget end
+        ZenSpec.replace("common/ui/zen_arrange_list", {
+            show = function(opts) arranged = opts end,
+        })
+        ZenSpec.replace("ui/widget/spinwidget", {
+            new = function(_self, opts) return opts end,
+        })
+        ZenSpec.replace("ui/widget/fontchooser", {
+            getFontNameText = function(path) return path:match("([^/]+)$") end,
+            isFontRegistered = function() return true end,
+            new = function(_self, opts) return opts end,
+        })
+        local config = {
+            browser_hide_up_folder = {},
+            features = {},
+            library_font = { font_face = "Library.ttf", font_size = 18 },
+        }
+        local items = require("modules/settings/sections/library_settings").build({
+            config = config,
+            plugin = { saveConfig = function() saves = saves + 1 end },
+            save_and_apply = function() end,
+        })
+        for _i, item in ipairs(items) do
+            if item.text == "Book details" then item.callback() break end
+        end
+
+        local font_items = arranged.item_table[12].sub_item_table_func()
+        local touchmenu = { updateItems = function() updates = updates + 1 end }
+        font_items[1].callback(touchmenu)
+        shown.callback("/fonts/Details.ttf")
+        assert.are.equal("/fonts/Details.ttf",
+            config.book_details.text_styles.description.font_face)
+
+        font_items[2].callback(touchmenu)
+        shown.callback({ value = 28 })
+        assert.are.equal(28, config.book_details.text_styles.description.font_size)
+
+        font_items[3].callback(touchmenu)
+        assert.are.same({ font_face = "default" },
+            config.book_details.text_styles.description)
+        assert.is_nil(config.book_details.text_styles.all)
+        assert.are.equal(3, saves)
+        assert.are.equal(3, updates)
     end)
 
     it("rebuilds the library when mosaic title strips change", function()
@@ -595,5 +725,35 @@ describe("library settings", function()
         assert.are.equal(1, cache_clears)
         assert.are.equal(1, reinitializations)
         assert.are.equal(1, scheduled)
+    end)
+
+    it("uses the wallpapers directory as the background picker default and Home", function()
+        local chooser
+        local home_path
+        package.loaded["ui/uimanager"].show = function(_, widget) chooser = widget end
+        ZenSpec.replace("ui/widget/pathchooser", {
+            new = function(_self, values) return values end,
+        })
+
+        local items = require("modules/settings/sections/library_settings").build({
+            config = {
+                browser_hide_up_folder = {},
+                features = {},
+                library_background = { path = "" },
+            },
+            plugin = { saveConfig = function() end },
+            save_and_apply = function() end,
+        })
+        local background
+        for _i, item in ipairs(items) do
+            if item.text == "Background" then background = item; break end
+        end
+
+        background.sub_item_table[1].callback()
+        assert.are.equal("/koreader/resources/wallpapers", chooser.path)
+        assert.is_true(chooser.goHome({
+            changeToPath = function(_, path) home_path = path end,
+        }))
+        assert.are.equal("/koreader/resources/wallpapers", home_path)
     end)
 end)

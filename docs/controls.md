@@ -6,7 +6,7 @@ settingsPath: Zen Settings > Controls
 order: 20
 ---
 
-<!-- Documentation current through ZenOS v3.0.0. -->
+<!-- Documentation current through ZenOS v3.3.0. -->
 
 ![Controls panel](/images/zen_os/quicksettings.webp)
 
@@ -27,6 +27,8 @@ Controls adds a fast control panel to KOReader. It allows you to toggle Wi-Fi, f
 - Show brightness and warmth sliders when the device supports those controls.
 - Hold a slider's minus button to turn the frontlight off or set warmth to zero.
 - Set an optional timeout that automatically turns Incognito Mode off.
+- Optionally turn Wi-Fi on and off with the Tailscale control.
+- Add hatching below the top-menu panel.
 - Flip the left-hand/right-hand icon used by Controls and the Library/Home menu tab.
 - Reset the button layout to defaults without deleting saved action and plugin buttons.
 
@@ -59,5 +61,7 @@ Controls adds a fast control panel to KOReader. It allows you to toggle Wi-Fi, f
 | Show warmth slider | Shows the warmth slider on devices with natural light support. |
 | Buttons > Screenshot > Timer | Sets the screenshot countdown from 0 to 10 seconds. You can also hold the Screenshot button to change it. |
 | Buttons > Incognito > Timeout | Turns Incognito Mode off automatically after the selected number of minutes. Off keeps it active until you toggle it yourself. |
+| Buttons > Tailscale > Toggle Wi-Fi with Tailscale | Turns Wi-Fi on before starting Tailscale and off after stopping it. Available when the Tailscale plugin is installed. |
+| Background hatching | Fills the area below the top-menu panel with a hatched pattern. |
 | Flip LH/RH icon | Flips the Controls and Library/Home icons. |
 | Reset to defaults | Restores the default Controls button layout. Action, plugin, and KOReader menu buttons are not removed; they are disabled and kept in your saved configuration. |

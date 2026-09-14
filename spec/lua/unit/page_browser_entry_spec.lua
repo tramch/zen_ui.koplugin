@@ -40,7 +40,10 @@ describe("page browser entry", function()
         _G.__ZEN_UI_PLUGIN = nil
         G_reader_settings = ZenSpec.memorySettings()
         ZenSpec.replace("common/plugin_root", "/tmp/zen-ui")
-        ZenSpec.replace("common/utils", { resolveLocalIcon = function() return nil end })
+        ZenSpec.replace("common/utils", {
+            resolveIcon = function() return nil end,
+            resolveLocalIcon = function() return nil end,
+        })
         ZenSpec.replace("common/zen_logger", { new = logger_stub })
         ZenSpec.replace("config/preset_store", {
             getSettings = function() return reader_store.settings end,
@@ -80,6 +83,78 @@ describe("page browser entry", function()
         ZenSpec.unload("modules/reader/patches/page_browser")
         ZenSpec.unload("modules/filebrowser/patches/library_font")
         ZenSpec.unload("common/reader_font")
+    end)
+
+    it("renders Android thumbnails without a subprocess", function()
+        local PageBrowserWidget = {}
+        install_widget_dependencies(PageBrowserWidget)
+        ZenSpec.replace("apps/reader/modules/readermenu", {})
+        ZenSpec.replace("apps/reader/modules/readerconfig", {})
+
+        local Device = require("device")
+        Device.isAndroid = function() return true end
+        local stock_check_calls = 0
+        local ReaderThumbnail = {
+            checkTileGeneration = function() stock_check_calls = stock_check_calls + 1 end,
+        }
+        ZenSpec.replace("apps/reader/modules/readerthumbnail", ReaderThumbnail)
+        ZenSpec.replace("ui/renderimage", {
+            scaleBlitBuffer = function(_, _bb, width, height)
+                return { stride = width, h = height }
+            end,
+        })
+        ZenSpec.replace("document/tilecacheitem", {
+            new = function(_, spec) return spec end,
+        })
+        ZenSpec.replace("logger", logger_stub())
+
+        require("modules/reader/patches/page_browser")()
+
+        local inserted, generated, save_calls
+        local statistics = {}
+        local ui = setmetatable({
+            statistics = statistics,
+            view = { footer_visible = true, state = { page = 2, zoom = 3, rotation = 4 } },
+        }, {
+            __index = {
+                saveSettings = function() save_calls = (save_calls or 0) + 1 end,
+            },
+        })
+        local thumbnail = {
+            ui = ui,
+            tile_cache = { insert = function(_, hash, tile) inserted = { hash, tile } end },
+            _getPageImage = function(self)
+                self.ui.saveSettings = function() end
+                self.ui.statistics = nil
+                self.ui.view.footer_visible = false
+                self.ui.view.state.page = 99
+                return {
+                    getWidth = function() return 600 end,
+                    getHeight = function() return 800 end,
+                }
+            end,
+        }
+        local request = {
+            page = 7, width = 300, height = 200, hash = "page-7", batch_id = 5,
+            when_generated_callback = function(tile, batch_id, delayed)
+                generated = { tile, batch_id, delayed }
+            end,
+        }
+
+        expect(ReaderThumbnail.startTileGeneration(thumbnail, request) == true)
+        expect(thumbnail.ui.view.footer_visible == true)
+        expect(thumbnail.ui.view.state.page == 2)
+        expect(thumbnail.ui.view.state.zoom == 3)
+        expect(thumbnail.ui.view.state.rotation == 4)
+        expect(rawget(ui, "saveSettings") == nil)
+        ui:saveSettings()
+        expect(save_calls == 1)
+        expect(ui.statistics == statistics)
+        expect(ReaderThumbnail.checkTileGeneration(thumbnail, request) == false)
+        expect(inserted[1] == "page-7")
+        expect(generated[1] == inserted[2])
+        expect(generated[2] == 5 and generated[3] == true)
+        expect(stock_check_calls == 0)
     end)
 
     it("registers the bottom gesture and opens the patched browser only when enabled", function()
@@ -186,6 +261,71 @@ describe("page browser entry", function()
         expect(PageBrowserWidget.onSwipe(browser, nil, { direction = "west" }) == true)
         expect(PageBrowserWidget.onSwipe(browser, nil, { direction = "east" }) == true)
         expect(page_down == 2 and page_up == 2)
+    end)
+
+    it("starts the pending reader tour even when the page browser is disabled", function()
+        local ReaderMenu = { initGesListener = function() end }
+        local ReaderConfig = { onSwipeShowConfigMenu = function() end }
+        local browser_closes = 0
+        local PageBrowserWidget = {
+            new = function(_, spec)
+                return {
+                    ui = spec.ui,
+                    zen_page_browser = true,
+                    onClose = function() browser_closes = browser_closes + 1 end,
+                }
+            end,
+        }
+        install_widget_dependencies(PageBrowserWidget)
+        ZenSpec.replace("apps/reader/modules/readermenu", ReaderMenu)
+        ZenSpec.replace("apps/reader/modules/readerconfig", ReaderConfig)
+
+        local scheduled, tour_args
+        ZenSpec.replace("ui/uimanager", {
+            show = function(_, widget) shown = widget end,
+            scheduleIn = function(_, delay, callback)
+                scheduled = { delay = delay, callback = callback }
+            end,
+            setDirty = function() end,
+            unschedule = function() end,
+        })
+        ZenSpec.replace("common/quickstart/reader_tour", {
+            start = function(...) tour_args = { ... } end,
+        })
+        local plugin = {
+            config = {
+                _meta = { quickstart_reader_tour_pending = true },
+                features = { page_browser = false },
+            },
+        }
+        _G.__ZEN_UI_PLUGIN = plugin
+        require("modules/reader/patches/page_browser")()
+
+        local ui = { registerTouchZones = function() end }
+        ReaderMenu.onReaderReady({ ui = ui })
+        expect(scheduled.delay == 0.5)
+        scheduled.callback()
+        expect(tour_args[1] == plugin and tour_args[2] == ui)
+
+        local menu_closes = 0
+        local reader_menu = {
+            ui = ui,
+            onCloseReaderMenu = function() menu_closes = menu_closes + 1 end,
+        }
+        setmetatable(reader_menu, { __index = ReaderMenu })
+        reader_menu:_zen_start_reader_tour()
+        expect(menu_closes == 1)
+        expect(scheduled.delay == 0)
+        scheduled.callback()
+        expect(tour_args[1] == plugin and tour_args[2] == ui)
+
+        reader_store.settings.page_browser_layout = "single"
+        local browser, finish_tour = tour_args[3]("carousel")
+        expect(browser == shown and browser.zen_page_browser == true)
+        expect(reader_store.settings.page_browser_layout == "carousel")
+        finish_tour()
+        expect(reader_store.settings.page_browser_layout == "single")
+        expect(browser_closes == 1)
     end)
 
     it("opens from a non-touch Menu hold and preserves the short Menu action", function()
@@ -614,7 +754,8 @@ describe("page browser entry", function()
         ZenSpec.replace("ui/gesturerange", button_class())
         ZenSpec.replace("ui/geometry", button_class())
         ZenSpec.replace("common/utils", {
-            resolveLocalIcon = function(_, name) return "/icons/" .. name .. ".svg" end,
+            resolveIcon = function(_, name) return "/icons/" .. name .. ".svg" end,
+            resolveLocalIcon = function(_, name) return "/local-icons/" .. name .. ".svg" end,
         })
         reader_store.settings.page_browser_layout = "grid"
         _G.__ZEN_UI_PLUGIN = { config = { features = { page_browser = true } } }
@@ -710,6 +851,28 @@ describe("page browser entry", function()
         expect(ReaderSearch.current_search_type == default_search_type)
     end)
 
+    it("leaves KOReader reader search untouched when Zen Search is disabled", function()
+        local stock_show = function() return "stock" end
+        local stock_search = function() return "search" end
+        local stock_results = function() return "results" end
+        local ReaderSearch = {
+            onShowFulltextSearchInput = stock_show,
+            search = stock_search,
+            onShowFindAllResults = stock_results,
+        }
+        ZenSpec.replace("apps/reader/modules/readersearch", ReaderSearch)
+        ZenSpec.replace("apps/reader/modules/readermenu", { initGesListener = function() end })
+        ZenSpec.replace("apps/reader/modules/readerconfig", { onSwipeShowConfigMenu = function() end })
+        _G.__ZEN_UI_PLUGIN = {
+            config = { features = { page_browser = false, search = false } },
+        }
+
+        require("modules/reader/patches/page_browser")()
+        expect(ReaderSearch.onShowFulltextSearchInput == stock_show)
+        expect(ReaderSearch.search == stock_search)
+        expect(ReaderSearch.onShowFindAllResults == stock_results)
+    end)
+
     it("uses native whole-word boundaries for fixed-layout document searches", function()
         local search_call = {}
         local find_all_call = {}
@@ -796,7 +959,8 @@ describe("page browser entry", function()
             end,
         })
         ZenSpec.replace("common/utils", {
-            resolveLocalIcon = function(_, name) return "/icons/" .. name .. ".svg" end,
+            resolveIcon = function(_, name) return "/icons/" .. name .. ".svg" end,
+            resolveLocalIcon = function(_, name) return "/local-icons/" .. name .. ".svg" end,
         })
         local shown_widgets, closed_widgets = {}, {}
         ZenSpec.replace("ui/uimanager", {
@@ -940,6 +1104,9 @@ describe("page browser entry", function()
         expect(positions["/icons/bookmark.svg"] == 273)
         expect(positions["/icons/toc.svg"] == 331)
         expect(positions["/icons/more_vertical.svg"] == 492)
+        expect(browser._zen_reader_tour_targets[1].file == "/icons/appbar.textsize.svg")
+        expect(browser._zen_reader_tour_targets[2].file == "/icons/bookmark.svg")
+        expect(browser._zen_reader_tour_targets[3].file == "/icons/toc.svg")
         expect(browser._zen_orig_nb_cols == 3 and browser._zen_orig_nb_rows == 3)
         local close_button = browser.title_bar.right_button
         expect(close_button.file == "/icons/close_light.svg")
@@ -1007,8 +1174,13 @@ describe("page browser entry", function()
         expect(closes == 6)
     end)
 
-    it("closes book search with hardware Back and focuses its X on non-touch devices", function()
-        local ReaderSearch = {}
+    it("adds book-search navigation arrows and supports hardware Back", function()
+        local search_directions = {}
+        local ReaderSearch = {
+            searchCallback = function(_, direction)
+                table.insert(search_directions, direction)
+            end,
+        }
         local close_button = { name = "close" }
         local input_widget = {
             name = "input",
@@ -1036,6 +1208,7 @@ describe("page browser entry", function()
             screen = {
                 getWidth = function() return 600 end,
                 getHeight = function() return 800 end,
+                scaleBySize = function(_, value) return value end,
             },
             isTouchDevice = function() return false end,
         })
@@ -1054,7 +1227,8 @@ describe("page browser entry", function()
             unschedule = function() end,
         })
         ZenSpec.replace("common/utils", {
-            resolveLocalIcon = function(_, name) return "/icons/" .. name .. ".svg" end,
+            resolveIcon = function(_, name) return "/icons/" .. name .. ".svg" end,
+            resolveLocalIcon = function(_, name) return "/local-icons/" .. name .. ".svg" end,
         })
         ZenSpec.replace("common/ui/zen_modal_close", {
             installDialog = function(target, callback)
@@ -1072,6 +1246,14 @@ describe("page browser entry", function()
         expect(shown_dialog == dialog)
         expect(dialog.title_bar.left_button == nil)
         expect(dialog.title_bar.right_button == close_button)
+        local buttons = dialog.buttons[1]
+        expect(#buttons == 3)
+        expect(buttons[1].text == "◀" and buttons[1].width == 56)
+        expect(buttons[2].is_enter_default == true)
+        expect(buttons[3].text == "▶" and buttons[3].width == 56)
+        buttons[1].callback()
+        buttons[3].callback()
+        expect(search_directions[1] == 1 and search_directions[2] == 0)
         expect(dialog.layout[1][1] == close_button)
         expect(dialog.layout[2][1] == input_widget)
         expect(dialog.selected.x == 1 and dialog.selected.y == 2)

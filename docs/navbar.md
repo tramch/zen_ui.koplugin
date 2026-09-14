@@ -6,7 +6,7 @@ settingsPath: Zen Settings > Navbar
 order: 35
 ---
 
-<!-- Documentation current through ZenOS v3.0.0. -->
+<!-- Documentation current through ZenOS v3.3.0. -->
 
 ![Navbar](/images/zen_os/navbar.webp)
 
@@ -20,6 +20,7 @@ Navbar settings live under **Zen Settings > Navbar**.
 
 - Show and arrange up to 7 visible tabs.
 - Hide or show icons.
+- Add tabs for Unread, Reading, On hold, and Finished books.
 - Add custom tabs with dispatcher actions, controls, plugin menus, native KOReader submenus, icons, and labels.
 - Select the destination used at startup and by the physical Home button.
 - Configure Library, Folder, Home, Manga, and News tab labels or actions.
@@ -38,13 +39,20 @@ Folder mode makes either tab a one-tap shortcut to wherever you keep that conten
 
 The built-in **Folder** tab opens a folder you choose. Its presets can point to the home folder, the last folder, or the current folder, and Folder can be selected as the default tab. Its label and icon can be changed without removing or re-adding the folder. Add as many separate **Folder** tabs as you need, each with its own path, label, and icon. Use **Specific tag** for a direct shortcut to one tag or **All tags** for the grouped tag browser. Each specific-tag tab can also have its own label and icon.
 
+## Kindle Library And Status Tabs
+
+On Kindle devices with [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin) installed, the **Kindle Library** tab opens the device's native Kindle library with ZenOS covers, metadata, status bar, display modes, and book context menus. Its settings can hide the plugin's synthetic Kindle Library folder when the Navbar tab is enough.
+
+Unread, Reading, To Be Read, On hold, and Finished can each be used as a direct library tab. **To Be Read** is a built-in tab; add the other status tabs from the tab picker.
+
 ## Grouped Views
 
-The Authors, Series, and All tags tabs group your library by metadata instead of by folder. Each grouped view keeps its own display mode, sort field, and sort direction, so you can browse Authors as a list sorted A-Z while Series stays a cover grid sorted by recently read.
+The Authors, Series, Languages, and All tags tabs group your library by metadata instead of by folder. Each grouped view keeps its own display mode, sort field, and sort direction.
 
-- **Authors** groups books by author. Independent display mode and sort/reverse.
-- **Series** groups books by series, ordered by series position inside each group. Independent display mode and sort/reverse.
-- **All tags** groups books by tag/keyword. Independent display mode plus a global tag sort and direction.
+- **Authors** groups books by author. It sorts by `First name` or `Last name`, with a separate ascending or descending order.
+- **Series** groups books by series, ordered by series position inside each group. Series names sort by title (ignoring leading articles) or natural title, with an independent direction.
+- **Languages** groups books by their localized language name, using the same title modes and direction.
+- **All tags** groups books by tag/keyword. Tag names use the same title modes and direction; book sorting remains configurable separately.
 
 Adjust a grouped view's display and sort from its context menu while that tab is open. Changes are saved per view.
 
@@ -53,7 +61,8 @@ Adjust a grouped view's display and sort from its context menu while that tab is
 | Setting | Description |
 | --- | --- |
 | Tabs | Opens the tab arranger. At least 1 tab must remain visible and no more than 7 tabs can be visible. |
-| Tabs > Built-in tabs | Includes Library, Folder, Manga, News, Continue, History, Favorites, Collections, Authors, Series, Home, Single tag, All tags, To Be Read, Search, Calibre Search, Stats, Exit, Previous page, Next page, and Menu. |
+| Tabs > Built-in tabs | Includes Library, Folder, Kindle Library when available, Manga, News, Continue, History, Favorites, Collections, Authors, Series, Languages, Home, Single tag, All tags, To Be Read, Search, Calibre Search, Stats, Exit, Previous page, Next page, and Menu. |
+| Tabs > Add > Tab | Adds an unused built-in destination or an Unread, Reading, On hold, or Finished status tab. |
 | Tabs > Add > Control | Adds a Navbar tab that runs a selected Controls control. |
 | Tabs > Add > Folder | Adds an independently configured folder tab. |
 | Tabs > Add > Specific tag | Adds a tab that opens one selected tag. |
@@ -71,6 +80,7 @@ Adjust a grouped view's display and sort from its context menu while that tab is
 | Tabs > Home > Label | Sets the Home tab label. |
 | Tabs > Books > Label | Sets the Library tab label to Books, Home, Library, or custom text. |
 | Tabs > Folder | Selects a folder destination, changes its label or icon, or uses the home, last, or current folder preset. |
+| Tabs > Kindle Library > Hide Kindle Library folder | Hides kindle.koplugin's synthetic folder while keeping the Navbar and Book strip destinations available. |
 | Tabs > Manga | Opens Rakuyomi, another manga reader, or a selected folder. |
 | Tabs > Manga > Folder presets | Sets the Manga folder to the home folder, last folder, or current folder. |
 | Tabs > News | Opens QuickRSS, RSS Reader, or a selected folder. |

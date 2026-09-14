@@ -6,6 +6,10 @@ describe("quick settings plugin controls", function()
     local zenfm
     local destination_entries
     local hosted_menu
+    local FileManagerMenu
+    local NetworkMgr
+    local actions
+    local save_calls
 
     local module_names = {
         "ffi/blitbuffer",
@@ -31,6 +35,7 @@ describe("quick settings plugin controls", function()
         "common/restart",
         "common/shared_state",
         "common/settings_transition",
+        "common/ui/button_label_width",
         "common/bluetooth",
         "modules/menu/patches/brightness_slider",
         "modules/menu/patches/warmth_slider",
@@ -57,33 +62,82 @@ describe("quick settings plugin controls", function()
         end
         original_plugin = rawget(_G, "__ZEN_UI_PLUGIN")
         original_quick_settings = rawget(_G, "__ZEN_UI_QUICK_SETTINGS")
+        actions = {}
+        save_calls = 0
 
         local no_op = {}
+        local function widget_class()
+            local class = {}
+            function class:new(values)
+                local widget = values or {}
+                function widget:getSize()
+                    local dimen = self.dimen or {}
+                    return {
+                        w = self.width or dimen.w or 64,
+                        h = self.height or dimen.h or 64,
+                    }
+                end
+                function widget:_render() end
+                return widget
+            end
+            return class
+        end
+        local Widget = widget_class()
         ZenSpec.replace("ffi/blitbuffer", no_op)
         ZenSpec.replace("ffi/util", { template = function(text) return text end, strcoll = function(a, b) return a < b end })
-        ZenSpec.replace("ui/widget/container/centercontainer", no_op)
+        ZenSpec.replace("ui/widget/container/centercontainer", Widget)
         ZenSpec.replace("device", {
-            screen = {},
+            screen = { scaleBySize = function(_self, value) return value end },
             hasFrontlight = function() return false end,
+            hasNaturalLight = function() return false end,
             hasGSensor = function() return true end,
+            getPowerDevice = function() end,
         })
         ZenSpec.replace("ui/event", { new = function(_self, name) return { name = name } end })
-        ZenSpec.replace("ui/font", no_op)
-        ZenSpec.replace("ui/widget/container/framecontainer", no_op)
-        ZenSpec.replace("ui/geometry", no_op)
-        ZenSpec.replace("ui/widget/horizontalgroup", no_op)
-        ZenSpec.replace("ui/widget/horizontalspan", no_op)
-        ZenSpec.replace("ui/widget/iconwidget", no_op)
-        ZenSpec.replace("ui/network/manager", no_op)
+        ZenSpec.replace("ui/font", { sizemap = { xx_smallinfofont = 18, ffont = 24 } })
+        ZenSpec.replace("ui/widget/container/framecontainer", Widget)
+        ZenSpec.replace("ui/geometry", Widget)
+        ZenSpec.replace("ui/widget/horizontalgroup", Widget)
+        ZenSpec.replace("ui/widget/horizontalspan", Widget)
+        ZenSpec.replace("ui/widget/iconwidget", Widget)
+        NetworkMgr = {
+            wifi_on = true,
+            connected = true,
+            run_when_connected_calls = 0,
+            toggle_on_calls = 0,
+            toggle_off_calls = 0,
+            isWifiOn = function(self) return self.wifi_on end,
+            isConnected = function(self) return self.connected end,
+            runWhenConnected = function(self, callback)
+                self.run_when_connected_calls = self.run_when_connected_calls + 1
+                self.connected_callback = callback
+            end,
+            toggleWifiOn = function(self, callback)
+                self.toggle_on_calls = self.toggle_on_calls + 1
+                self.wifi_on = true
+                self.wifi_on_callback = callback
+                actions[#actions + 1] = "wifi_on"
+            end,
+            toggleWifiOff = function(self, callback)
+                self.toggle_off_calls = self.toggle_off_calls + 1
+                self.wifi_on = false
+                self.connected = false
+                actions[#actions + 1] = "wifi_off"
+                if callback then callback() end
+            end,
+        }
+        ZenSpec.replace("ui/network/manager", NetworkMgr)
         ZenSpec.replace("ui/widget/confirmbox", no_op)
-        ZenSpec.replace("ui/widget/textwidget", no_op)
+        ZenSpec.replace("ui/widget/textwidget", Widget)
         ZenSpec.replace("ui/uimanager", {
             broadcastEvent = function() end,
             nextTick = function(_self, callback) callback() end,
         })
-        ZenSpec.replace("modules/filebrowser/patches/library_font", no_op)
-        ZenSpec.replace("ui/widget/verticalgroup", no_op)
-        ZenSpec.replace("ui/widget/verticalspan", no_op)
+        ZenSpec.replace("modules/filebrowser/patches/library_font", {
+            getFace = function() return {} end,
+        })
+        ZenSpec.replace("ui/widget/verticalgroup", Widget)
+        ZenSpec.replace("ui/widget/verticalspan", Widget)
         ZenSpec.replace("common/utils", {
             deepcopy = function(value)
                 if type(value) ~= "table" then return value end
@@ -97,12 +151,18 @@ describe("quick settings plugin controls", function()
             resolveIcon = function(icons_dir, name)
                 return icons_dir .. name .. ".svg"
             end,
+            iconOpticalScale = function() return 1 end,
             getIconPickerList = function() return {} end,
         })
         ZenSpec.replace("common/shutdown", no_op)
         ZenSpec.replace("common/restart", no_op)
         ZenSpec.replace("common/shared_state", { get = function() end })
         ZenSpec.replace("common/settings_transition", { close = function() end })
+        ZenSpec.replace("common/ui/button_label_width", {
+            equalCellWidth = function(width, count) return width / count end,
+            maxWidth = function(width) return width end,
+            SIDE_PADDING = 0,
+        })
         ZenSpec.replace("common/bluetooth", {
             isAvailable = function() return false end,
         })
@@ -130,7 +190,10 @@ describe("quick settings plugin controls", function()
             init = function() end,
             switchMenuTab = function() end,
         })
-        ZenSpec.replace("apps/filemanager/filemanagermenu", { setUpdateItemTable = function() end })
+        FileManagerMenu = {
+            setUpdateItemTable = function(self) self.tab_item_table = {} end,
+        }
+        ZenSpec.replace("apps/filemanager/filemanagermenu", FileManagerMenu)
         ZenSpec.replace("apps/reader/modules/readermenu", { setUpdateItemTable = function() end })
         ZenSpec.replace("apps/filemanager/filemanager", {})
         ZenSpec.replace("apps/reader/readerui", {})
@@ -141,6 +204,7 @@ describe("quick settings plugin controls", function()
             isRunning = function(self) return self.running end,
             onToggleTailscale = function(self, callback)
                 self.toggle_calls = self.toggle_calls + 1
+                actions[#actions + 1] = self.running and "tailscale_off" or "tailscale_on"
                 self.running = not self.running
                 callback()
             end,
@@ -184,6 +248,7 @@ describe("quick settings plugin controls", function()
                     next_custom_id = 0,
                 },
             },
+            saveConfig = function() save_calls = save_calls + 1 end,
         }
         ZenSpec.unload("modules/menu/patches/quick_settings")
         require("modules/menu/patches/quick_settings")()
@@ -213,6 +278,47 @@ describe("quick settings plugin controls", function()
         assert.is_equal(1, updates)
     end)
 
+    it("prompts for Wi-Fi and waits for a connection before starting Tailscale", function()
+        NetworkMgr.wifi_on = false
+        NetworkMgr.connected = false
+
+        assert.is_true(_G.__ZEN_UI_QUICK_SETTINGS.activate("tailscale"))
+        assert.are.equal(1, NetworkMgr.run_when_connected_calls)
+        assert.are.equal(0, tailscale.toggle_calls)
+
+        NetworkMgr.connected = true
+        NetworkMgr.connected_callback()
+        assert.are.same({ "tailscale_on" }, actions)
+    end)
+
+    it("turns Wi-Fi on before and off after Tailscale when linked", function()
+        _G.__ZEN_UI_PLUGIN.config.quick_settings.tailscale_toggle_wifi = true
+        NetworkMgr.wifi_on = false
+        NetworkMgr.connected = false
+
+        _G.__ZEN_UI_QUICK_SETTINGS.activate("tailscale")
+        assert.are.same({ "wifi_on" }, actions)
+        assert.are.equal(0, tailscale.toggle_calls)
+
+        NetworkMgr.connected = true
+        NetworkMgr.wifi_on_callback()
+        assert.are.same({ "wifi_on", "tailscale_on" }, actions)
+
+        _G.__ZEN_UI_QUICK_SETTINGS.activate("tailscale")
+        assert.are.same({ "wifi_on", "tailscale_on", "tailscale_off", "wifi_off" }, actions)
+    end)
+
+    it("offers the off-by-default linked Wi-Fi setting without a hold action", function()
+        local items = _G.__ZEN_UI_QUICK_SETTINGS.getSettingsItems("tailscale")
+        assert.are.equal("Toggle Wi-Fi with Tailscale", items[1].text)
+        assert.is_false(items[1].checked_func())
+
+        items[1].callback()
+        assert.is_true(items[1].checked_func())
+        assert.are.equal(1, save_calls)
+        assert.is_false(_G.__ZEN_UI_QUICK_SETTINGS.hold("tailscale"))
+    end)
+
     it("labels autorotate and resolves bundled control icons", function()
         local controls = {}
         for _i, item in ipairs(_G.__ZEN_UI_QUICK_SETTINGS.getItems()) do
@@ -222,6 +328,27 @@ describe("quick settings plugin controls", function()
         assert.are.equal("Autorotate", controls.gyro.label)
         assert.are.equal("/tmp/zen-ui/icons/quick_rotate.svg", controls.gyro.icon)
         assert.are.equal("/tmp/zen-ui/icons/quick_zen.svg", controls.zen.icon)
+    end)
+
+    it("renders default controls while the setup tour is pending", function()
+        _G.__ZEN_UI_PLUGIN.config._meta = { quickstart_menu_tour_pending = true }
+        local menu = {}
+        FileManagerMenu.setUpdateItemTable(menu)
+        local function rendered_ids()
+            local touch_menu = { item_width = 600 }
+            menu.tab_item_table[1].panel(touch_menu)
+            local ids = {}
+            for _i, ref in ipairs(touch_menu._zen_panel_refs.buttons) do
+                ids[#ids + 1] = ref.id
+            end
+            return ids
+        end
+
+        assert.are.same({ "wifi", "night", "rotate", "zen", "restart", "sleep" }, rendered_ids())
+        assert.are.same({ "tailscale" }, _G.__ZEN_UI_PLUGIN.config.quick_settings.button_order)
+
+        _G.__ZEN_UI_PLUGIN.config._meta.quickstart_menu_tour_pending = false
+        assert.are.same({ "tailscale" }, rendered_ids())
     end)
 
     it("uses the configured autorotate label and icon", function()
@@ -272,6 +399,15 @@ describe("quick settings plugin controls", function()
         end
 
         assert.is_true(found)
+    end)
+
+    it("uses the startup plugin directory list for visibility", function()
+        _G.__ZEN_UI_PLUGIN.config._meta = {
+            installed_plugins = { localsend = true },
+        }
+
+        assert.is_true(_G.__ZEN_UI_QUICK_SETTINGS.has("localsend"))
+        assert.is_false(_G.__ZEN_UI_QUICK_SETTINGS.has("notion"))
     end)
 
     it("opens ZenFM settings on hold with a toggle and timeout submenu", function()

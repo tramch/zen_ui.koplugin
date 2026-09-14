@@ -145,6 +145,7 @@ describe("Zen settings page", function()
                     self.search_visible = search_visible
                 end
                 opts.setQuery = function(self, query) self.query = query end
+                opts.setAction = function(self, action) self.action = action end
                 opts.collapseSearch = function(self)
                     self.search_collapsed = true
                 end
@@ -174,6 +175,27 @@ describe("Zen settings page", function()
         }
     end
 
+    it("loads the settings builder only when opening Settings", function()
+        local name = "modules/settings/zen_settings"
+        local builder, preload = package.loaded[name], package.preload[name]
+        local loads = 0
+        package.loaded[name] = nil
+        package.preload[name] = function()
+            loads = loads + 1
+            return builder
+        end
+        local ok, err = pcall(function()
+            ZenSpec.unload("modules/settings/zen_settings_page")
+            PageModule = require("modules/settings/zen_settings_page")
+            assert.are.equal(0, loads)
+            local page = PageModule.show({ config = {} })
+            assert.are.equal(1, loads)
+            assert.are.equal(page, shown_widgets[1])
+        end)
+        package.preload[name], package.loaded[name] = preload, builder
+        assert.is_true(ok, err)
+    end)
+
     it("shows no root back button, navigates submenus, and updates radio choices", function()
         local choice = "a"
         local radio = {
@@ -192,7 +214,9 @@ describe("Zen settings page", function()
         assert.are.equal("Library", library._zen_display_text)
         assert.is_true(library._zen_has_submenu)
 
+        settings.page = 2
         settings:onMenuSelect(library)
+        assert.are.equal(1, settings.page)
         assert.are.equal("Library", settings.title_bar.title)
         assert.is_true(settings.title_bar.back_visible)
         assert.is_true(settings.title_bar.search_visible)
@@ -205,6 +229,20 @@ describe("Zen settings page", function()
         assert.are.equal("Settings", settings.title_bar.title)
         assert.is_false(settings.title_bar.back_visible)
         assert.is_true(settings.title_bar.search_visible)
+    end)
+
+    it("shows a header action only at the settings root", function()
+        local action = { text = "Update available" }
+        local child = { text = "Child" }
+        local root = {{ text = "Section", sub_item_table = { child } }}
+        root._zen_header_action_func = function() return action end
+        local settings = make_page(root)
+
+        assert.are.equal(action, settings.title_bar.action)
+        settings:onMenuSelect(root[1])
+        assert.is_nil(settings.title_bar.action)
+        settings:backToUpperMenu()
+        assert.are.equal(action, settings.title_bar.action)
     end)
 
     it("toggles configurable submenu rows only from their outer switch", function()

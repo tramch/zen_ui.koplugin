@@ -60,4 +60,56 @@ describe("Advanced settings", function()
         assert.is_true(double_tap_item.checked_func())
         assert.are.equal(1, saved)
     end)
+
+    it("enables modal dragging only after an explicit toggle", function()
+        local saved, restart_prompts = 0, 0
+        local config = { features = {}, developer = {} }
+        local items = require("modules/settings/sections/advanced_settings").build({
+            config = config,
+            plugin = { saveConfig = function() saved = saved + 1 end },
+            settings_apply = {
+                prompt_restart = function() restart_prompts = restart_prompts + 1 end,
+            },
+        })
+        local drag_item
+        for _i, item in ipairs(items) do
+            if item.text == "Allow dragging reader modals" then drag_item = item end
+        end
+
+        assert.is_false(drag_item.checked_func())
+        drag_item.callback()
+        assert.is_true(drag_item.checked_func())
+        assert.are.equal(1, saved)
+        assert.are.equal(1, restart_prompts)
+    end)
+
+    it("applies verbose debug logging immediately", function()
+        local calls = {}
+        G_reader_settings.makeTrue = function(self, key) self:saveSetting(key, true) end
+        G_reader_settings.makeFalse = function(self, key) self:saveSetting(key, false) end
+        ZenSpec.replace("dbg", {
+            turnOn = function() calls[#calls + 1] = "on" end,
+            turnOff = function() calls[#calls + 1] = "off" end,
+            setVerbose = function(_self, enabled)
+                calls[#calls + 1] = enabled and "verbose" or "quiet"
+            end,
+        })
+        local items = require("modules/settings/sections/advanced_settings").build({
+            config = { features = {}, developer = {} },
+            plugin = { saveConfig = function() end },
+            settings_apply = { prompt_restart = function() end },
+        })
+        local debug_item
+        for _i, item in ipairs(items) do
+            if item.text == "Debug logging" then debug_item = item end
+        end
+
+        debug_item.callback()
+        assert.is_true(debug_item.checked_func())
+        assert.same({ "on", "verbose" }, calls)
+
+        debug_item.callback()
+        assert.is_false(debug_item.checked_func())
+        assert.same({ "on", "verbose", "quiet", "off" }, calls)
+    end)
 end)

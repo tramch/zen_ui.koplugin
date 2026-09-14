@@ -89,11 +89,17 @@ describe("file browser navbar navigation", function()
                 showTagDetail = function(tag, _inject, tab_id)
                     calls[#calls + 1] = "tag:" .. tag .. ":" .. tab_id
                 end,
+                showStatusView = function(status, label, _inject, tab_id)
+                    calls[#calls + 1] = table.concat({
+                        "status", status, label, tab_id,
+                    }, ":")
+                end,
                 showTBRView = function() calls[#calls + 1] = "to_be_read" end,
                 closeAll = function() calls[#calls + 1] = "close_groups" end,
             },
         }
         FileManager = class({
+            onClose = function() calls[#calls + 1] = "close_filemanager" end,
             setupLayout = function(self)
                 setup_observation = {
                     hidden = rawget(_G, "__ZEN_UI_HIDDEN_HOME_BOOTSTRAP"),
@@ -166,6 +172,9 @@ describe("file browser navbar navigation", function()
             realpath = function(path) return real_paths[path] or path end,
         })
         ZenSpec.replace("dispatcher", {
+            getDisplayList = function(settings)
+                return settings.kindle_library and { { key = "kindle_library" } } or {}
+            end,
             execute = function(_self, action)
                 dispatcher_executions[#dispatcher_executions + 1] = action
             end,
@@ -702,6 +711,39 @@ describe("file browser navbar navigation", function()
         assert.is_nil(fm._zen_hidden_home_startup)
     end)
 
+    it("does not request another repaint after setupLayout", function()
+        _G.__ZEN_UI_PLUGIN.config.navbar.default_tab = "books"
+        local file_chooser = { path_items = {} }
+        local fm = {
+            root_path = "/library",
+            _test_setup_file_chooser = file_chooser,
+            { file_chooser },
+        }
+        FileManager.instance = fm
+        local dirty_calls = 0
+        UIManager.setDirty = function() dirty_calls = dirty_calls + 1 end
+
+        FileManager.setupLayout(fm)
+
+        assert.are.equal(0, dirty_calls)
+    end)
+
+    it("reapplies a Library default after cold-start path tracking", function()
+        _G.__ZEN_UI_PLUGIN.config.navbar.default_tab = "books"
+        local fm = make_instance()
+        fm.file_chooser.path = "/library/Fiction"
+        fm[1] = { fm.file_chooser }
+        FileManager.onPathChanged(fm, fm.file_chooser.path)
+        UIManager._window_stack = { { widget = fm } }
+        calls = {}
+
+        initial_reinject_callback()
+
+        assert.are.same({ "books:/library" }, calls)
+        assert.are.equal("Library", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+        assert.is_true(fm._zen_default_tab_bootstrapped)
+    end)
+
     it("defers hidden FileManager construction when restoring Home", function()
         _G.__ZEN_UI_PLUGIN.config.features.restore_library_view = true
         _G.__ZEN_UI_LIBRARY_STATE = { tab = "home", page = 2 }
@@ -1001,8 +1043,9 @@ describe("file browser navbar navigation", function()
         assert.are.same({}, calls)
         assert.are.equal(3, fm.file_chooser.page)
         assert.are.equal(1, cover_resume_calls)
-        assert.are.equal(1, #next_ticks)
+        assert.are.equal(2, #next_ticks)
 
+        table.remove(next_ticks, 1)()
         table.remove(next_ticks, 1)()
         assert.are.same({}, calls)
         assert.is_nil(fm.file_chooser._zen_home_retained_library)
@@ -1183,6 +1226,21 @@ describe("file browser navbar navigation", function()
         assert.are.equal("Folder", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
 
         FileManager.onPathChanged(fm, "/library/Fictional")
+        assert.are.equal("Library", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+    end)
+
+    it("keeps Library active when Folder contains the library root", function()
+        local fm = make_instance()
+        _G.__ZEN_UI_PLUGIN.config.navbar.folder_path = "/"
+        dir_mtimes["/"] = 10
+        fm.file_chooser.changeToPath = function(self, path)
+            self.path = path
+            FileManager.onPathChanged(fm, path)
+        end
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("folder"))
+        assert.are.equal("Folder", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("books"))
         assert.are.equal("Library", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
     end)
 
@@ -1498,6 +1556,51 @@ describe("file browser navbar navigation", function()
         assert.are.equal("Science", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
     end)
 
+    it("opens a custom status tab directly in that status view", function()
+        local navbar = _G.__ZEN_UI_PLUGIN.config.navbar
+        navbar.custom_tabs = {
+            { id = "ct_finished", type = "status", status = "complete",
+                label = "Finished" },
+        }
+        navbar.show_tabs.ct_finished = true
+        table.insert(navbar.tab_order, "ct_finished")
+        local fm = make_instance()
+        fm[1] = { fm.file_chooser }
+        local status_menu = {
+            name = "status_detail",
+            page = 3,
+            dimen = { w = 800, h = 600 },
+            inner_dimen = { w = 800, h = 600 },
+            border_size = 0,
+            close_callback = function() calls[#calls + 1] = "status_closed" end,
+            updateItems = function() calls[#calls + 1] = "status_reset" end,
+            [1] = {
+                dimen = { w = 800, h = 560 },
+                inner_dimen = { w = 800, h = 560 },
+                resetLayout = function() end,
+            },
+        }
+        shared.group_view.showStatusView = function(status, label, inject, tab_id)
+            calls[#calls + 1] = table.concat({
+                "status", status, label, tab_id,
+            }, ":")
+            inject(status_menu, tab_id)
+        end
+        _G.__ZEN_UI_REINJECT_FM_NAVBAR()
+        calls = {}
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("ct_finished"))
+        assert.same({ "status:complete:Finished:ct_finished" }, calls)
+        assert.are.equal("Finished", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+
+        local status_navbar = status_menu[1][1][2]
+        status_navbar.getTappedTabId = function() return "ct_finished" end
+        calls = {}
+        assert.is_true(status_navbar:onTapNavBar(nil, { pos = { x = 400, y = 1 } }))
+        assert.are.equal(1, status_menu.page)
+        assert.are.same({ "status_reset" }, calls)
+    end)
+
     it("launches available native menu tabs and retains unavailable ones", function()
         local navbar = _G.__ZEN_UI_PLUGIN.config.navbar
         navbar.custom_tabs = {
@@ -1648,6 +1751,27 @@ describe("file browser navbar navigation", function()
             reveal.details)
     end)
 
+    it("uses flashui between Library and Home", function()
+        local fm = make_instance()
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("books"))
+        fm.file_chooser.path = "/library"
+        fm.file_chooser.item_table = { { path = "/library/Book.epub" } }
+        dir_mtimes["/library"] = 10
+        UIManager._window_stack = {
+            { widget = fm },
+            { widget = home_widget },
+        }
+        local flash_count = 0
+        UIManager.setDirty = function(_self, _widget, mode)
+            if mode == "flashui" then flash_count = flash_count + 1 end
+        end
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("home"))
+        assert.are.equal(1, flash_count)
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("books"))
+        assert.are.equal(2, flash_count)
+    end)
+
     it("reveals a reinitialized hidden FileManager before handling Library taps", function()
         local fm = make_instance()
         fm.invisible = true
@@ -1689,8 +1813,7 @@ describe("file browser navbar navigation", function()
         assert.is_nil(fm.invisible)
         assert.is_nil(fm._zen_hidden_home_startup)
         assert.are.same({
-            widget = fm,
-            mode = "ui",
+            mode = "flashui",
             top = fm,
         }, reveal)
         local top = UIManager._window_stack[#UIManager._window_stack].widget
@@ -1961,6 +2084,33 @@ describe("file browser navbar navigation", function()
         assert.are.same({ "to_be_read" }, calls)
     end)
 
+    it("opens Kindle as a standalone tab and resets it to page one", function()
+        local navbar_config = _G.__ZEN_UI_PLUGIN.config.navbar
+        navbar_config.show_tabs.kindle = true
+        navbar_config.tab_order = { "kindle" }
+
+        make_instance()
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("kindle"))
+        assert.are.same({ { kindle_library = true } }, dispatcher_executions)
+
+        local updates = 0
+        local menu = {
+            name = "kindle_library",
+            page = 3,
+            dimen = { w = 800, h = 600 },
+            inner_dimen = { w = 800, h = 600 },
+            updateItems = function() updates = updates + 1 end,
+            { dimen = { w = 800, h = 580 } },
+        }
+        require("ui/widget/menu").init(menu)
+        local navbar = menu[1][1][2]
+
+        assert.is_true(menu._zen_standalone_navbar_injected)
+        assert.is_true(navbar:onTapNavBar(nil, { pos = { x = 400, y = 1 } }))
+        assert.are.equal(1, menu.page)
+        assert.are.equal(1, updates)
+    end)
+
     it("dispatches books and stock file-browser tabs to their intended actions", function()
         make_instance()
         for _i, id in ipairs({
@@ -1974,6 +2124,21 @@ describe("file browser navbar navigation", function()
             "previous", "next", "menu",
         }, calls)
         assert.are.equal("Collections", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+    end)
+
+    it("closes History above FileManager before exiting", function()
+        local fm = make_instance()
+        local history = { name = "history" }
+        UIManager._window_stack = { { widget = fm }, { widget = history } }
+        package.loaded["common/utils"].closeWidgetsAbove = function(anchor)
+            assert.are.equal(fm, anchor)
+            calls[#calls + 1] = "close_history"
+        end
+        calls = {}
+
+        FileManager.onClose(fm)
+
+        assert.are.same({ "close_history", "close_filemanager" }, calls)
     end)
 
     it("returns an open collection to the collections root on an active-tab tap", function()

@@ -13,7 +13,6 @@ local IconItem = require("common/ui/icon_menu_item")
 local SettingsTitleBar = require("common/ui/zen_settings_titlebar")
 local TruncatedTextMessage = require("common/ui/truncated_text_message")
 local TopMenu = require("modules/global/patches/menu_top_swipe")
-local zen_settings = require("modules/settings/zen_settings")
 
 local M = {}
 local active_page
@@ -213,6 +212,11 @@ function ZenSettingsPage:_syncHeader()
     if not self.title_bar then return end
     local at_root = #self.item_table_stack == 0
     self.title_bar:setState(self:_currentTitle(), not at_root, true)
+    local action_func = self._root_items and self._root_items._zen_header_action_func
+    if type(self.title_bar.setAction) == "function" then
+        self.title_bar:setAction(at_root and type(action_func) == "function"
+            and action_func() or nil)
+    end
 end
 
 function ZenSettingsPage:_focusSearchInput()
@@ -421,6 +425,7 @@ function ZenSettingsPage:_openSubmenu(item, items, defer_update)
     items._zen_title = item.sub_title or item_text(item)
     self.parent_id = nil
     self.item_table = items
+    self.page = 1
     if not defer_update then self:updateItems(1) end
     return true
 end
@@ -858,7 +863,7 @@ function M.show(plugin, opts)
     restoring_arrange_resume = resume and resume.arrange or nil
     arrange_open_context = nil
     I18n.refresh()
-    local root_items = zen_settings.build(plugin).sub_item_table
+    local root_items = require("modules/settings/zen_settings").build(plugin).sub_item_table
     root_items._zen_title = _("Settings")
     local page = ZenSettingsPage:new{
         title = _("Settings"),

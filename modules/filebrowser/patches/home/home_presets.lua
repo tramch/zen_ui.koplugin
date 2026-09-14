@@ -25,9 +25,13 @@ local function featured_defaults()
             left = "percent",
             right = "total_pages",
         },
+        show_author = true,
+        show_series = true,
         show_progress = true,
         show_description = true,
         wrap_description_text = false,
+        justify_description_text = false,
+        format_description_html = false,
         show_status_bar = true,
         status_bar_bold_text = true,
         status_bar_show_bottom_border = true,
@@ -450,7 +454,7 @@ local STRIP_COMMON_KEYS = {
 local VALID_CONTROL_IDS = {
     recent = true, favorites = true, to_be_read = true, authors = true,
     series = true, languages = true, tags = true, collections = true,
-    books = true, manga = true,
+    books = true, kindle = true, manga = true,
     news = true, continue = true, history = true, home = true,
     search = true, calibre_search = true, stats = true, exit = true, page_left = true,
     page_right = true, menu = true,
@@ -542,9 +546,11 @@ local function ensure_strip_shape(strip)
     local valid_sources = {
         recent = true, favorites = true, to_be_read = true, authors = true,
         series = true, languages = true, tags = true, collections = true, tag = true,
-        folder = true, custom = true,
+        status = true, folder = true, custom = true, kindle = true,
     }
-    if not valid_sources[strip.default_source.kind] then
+    if not valid_sources[strip.default_source.kind]
+            or strip.default_source.kind == "status"
+                and not ButtonModel.statusLabel(strip.default_source.value) then
         strip.default_source = { kind = "recent" }
         changed = true
     end

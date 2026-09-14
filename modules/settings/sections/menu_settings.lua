@@ -35,17 +35,10 @@ function M.build(ctx)
         return type(cb) == "table" and type(cb._zen_draft_commit) == "function"
     end
 
-    -- Resolve UI instance once for plugin-availability checks (fail-open if nil).
-    local _ui
-    do
-        local ok_f, FM = pcall(require, "apps/filemanager/filemanager")
-        local ok_r, RU = pcall(require, "apps/reader/readerui")
-        _ui = (ok_f and FM.instance) or (ok_r and RU.instance)
-    end
-    -- Returns true when the plugin slot exists on the UI, or when the UI is
-    -- unavailable (fail-open so we never silently hide a reachable button).
-    local function hasPlugin(slot)
-        return _ui == nil or _ui[slot] ~= nil
+    local function hasPlugin(name)
+        local meta = type(config) == "table" and config._meta
+        local installed = type(meta) == "table" and meta.installed_plugins
+        return type(installed) ~= "table" or installed[name:lower()] == true
     end
 
     local function hasAnyPlugin(slots)
@@ -213,6 +206,20 @@ function M.build(ctx)
             })
         end
         return items
+    end
+
+    local function buildTailscaleButtonSubItems()
+        return {{
+            text = _("Toggle Wi-Fi with Tailscale"),
+            checked_func = function()
+                return config.quick_settings.tailscale_toggle_wifi == true
+            end,
+            callback = function()
+                config.quick_settings.tailscale_toggle_wifi =
+                    config.quick_settings.tailscale_toggle_wifi ~= true
+                save_and_apply_quick_settings()
+            end,
+        }}
     end
 
     local function buildScreenshotButtonSubItems()
@@ -602,6 +609,14 @@ function M.build(ctx)
                             return T(_("Rotate: %1"), getRotateActionLabel()) .. " \u{25B8}"
                         end
                         item.sub_title = _("Rotate")
+                        item.sub_item_table_func = function()
+                            return build_control_sub_items(id)
+                        end
+                    elseif id == "tailscale" then
+                        item.text_func = function()
+                            return _("Tailscale") .. " \u{25B8}"
+                        end
+                        item.sub_title = _("Tailscale")
                         item.sub_item_table_func = function()
                             return build_control_sub_items(id)
                         end
@@ -1010,6 +1025,8 @@ function M.build(ctx)
             items = buildScreenshotButtonSubItems()
         elseif id == "incognito" then
             items = require("modules/global/patches/incognito_mode").timeoutMenuItems(zen_plugin)
+        elseif id == "tailscale" then
+            items = buildTailscaleButtonSubItems()
         end
         items[#items + 1] = IconItem.decorate({
             text = _("Delete"),
@@ -1057,11 +1074,13 @@ function M.build(ctx)
         config.quick_settings.show_labels = def.show_labels
         config.quick_settings.show_frontlight = def.show_frontlight
         config.quick_settings.show_warmth = def.show_warmth
+        config.quick_settings.background_hatching = def.background_hatching
         config.quick_settings.flip_lh_rh_icon = def.flip_lh_rh_icon
         config.quick_settings.gyro_label = def.gyro_label
         config.quick_settings.gyro_icon = def.gyro_icon
         quick_button_label_by_id.gyro = getAutorotateLabel()
         config.quick_settings.screenshot_timer_seconds = def.screenshot_timer_seconds
+        config.quick_settings.tailscale_toggle_wifi = def.tailscale_toggle_wifi
         save_and_apply_quick_settings()
     end
 
@@ -1148,6 +1167,16 @@ function M.build(ctx)
                     save_and_apply_quick_settings()
                 end,
             }, icons.flip_lh_rh),
+            IconItem.decorate({
+                text = _("Background hatching"),
+                checked_func = function()
+                    return config.quick_settings.background_hatching == true
+                end,
+                callback = function()
+                    config.quick_settings.background_hatching = config.quick_settings.background_hatching ~= true
+                    save_and_apply_quick_settings()
+                end,
+            }, icons.settings_background),
             IconItem.decorate({
                 text = _("Reset to defaults"),
                 separator = true,

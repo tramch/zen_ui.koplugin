@@ -429,21 +429,15 @@ local function apply_browser_list_item_layout()
             local series_str
             if series then
                 series = BD.auto(series)
-                if series_index then
-                    series_str = string.format("#%.4g – %s", series_index, series)
-                else
-                    series_str = series
-                end
+                series_index = tonumber(series_index)
+                series_str = series_index and string.format("#%.4g – %s", series_index, series) or series
             end
 
             -- ── Progress / right widget ───────────────────────────────────────
-            local percent_finished = book_info.percent_finished
-            local status = book_info.status
+            local status_data = book_status.getFileStatusData(filepath, book_info)
+            local percent_finished = status_data.percent_finished
             local pages = zen_utils.getStablePageCount(filepath, book_info.pages or bookinfo.pages)
-            local effective_status = book_status.getComputedStatus(
-                filepath, status, percent_finished
-            )
-            local display_status = book_status.getDisplayStatus(filepath, effective_status)
+            local display_status = status_data.display_status or status_data.effective_status
             local is_new = display_status == "new"
             self._zen_effective_status = display_status
 
@@ -887,9 +881,7 @@ local function apply_browser_list_item_layout()
             end
             -- setupLayout already called updateItems before our wrapper was installed,
             -- so strip the current item_group now (covers return-from-reader).
-            local UIManager = require("ui/uimanager")
             stripListBorders(fc)
-            UIManager:setDirty(fc, "ui")
         end
     end
 

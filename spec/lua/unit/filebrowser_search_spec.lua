@@ -1,16 +1,23 @@
 describe("file browser search", function()
-    local close_button, close_count, closed, dialog, input_widget
+    local close_button, close_count, closed, dialog, input_widget, stock_calls
 
     before_each(function()
         dialog = nil
         closed = nil
         close_count = 0
         close_button = nil
+        stock_calls = {}
         _G.__ZEN_UI_PLUGIN = { config = { features = { search = true } } }
 
         local FileManagerFileSearcher = {
-            onShowFileSearch = function() end,
-            isFileMatch = function() end,
+            onShowFileSearch = function()
+                stock_calls.show = (stock_calls.show or 0) + 1
+                return "stock search"
+            end,
+            isFileMatch = function()
+                stock_calls.match = (stock_calls.match or 0) + 1
+                return "stock match"
+            end,
             updateItemTable = function() end,
             onMenuHold = function() end,
             onShowSearchResults = function() end,
@@ -93,5 +100,28 @@ describe("file browser search", function()
         assert.is_true(input_widget.keyboard:onZenCloseFileSearchDialog())
         assert.is_true(closed == dialog)
         assert.are.equal(1, close_count)
+    end)
+
+    it("matches books but not folders with the same search text", function()
+        local FileManagerFileSearcher = require("apps/filemanager/filemanagerfilesearcher")
+
+        assert.is_true(FileManagerFileSearcher:isFileMatch(
+            "Invincible Presents - Atom Eve 03.cbz",
+            "/library/Invincible Presents - Atom Eve 03.cbz",
+            "atom",
+            true))
+        assert.is_false(FileManagerFileSearcher:isFileMatch(
+            "Invincible Presents - Atom Eve & Rex Splode",
+            "/library/Invincible Presents - Atom Eve & Rex Splode",
+            "atom"))
+    end)
+
+    it("uses KOReader file search when Zen Search is disabled", function()
+        local FileManagerFileSearcher = require("apps/filemanager/filemanagerfilesearcher")
+        _G.__ZEN_UI_PLUGIN.config.features.search = false
+
+        assert.are.equal("stock search", FileManagerFileSearcher:onShowFileSearch())
+        assert.are.equal("stock match", FileManagerFileSearcher:isFileMatch())
+        assert.are.same({ show = 1, match = 1 }, stock_calls)
     end)
 end)

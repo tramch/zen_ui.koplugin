@@ -1,7 +1,9 @@
 local ConfigManager = require("config/manager")
+local author_sort = require("common/author_sort")
 local book_status = require("common/book_status")
 local HistoryIndex = require("common/history_index")
 local icons = require("common/inline_icon_map")
+local submenu_arrow = icons.arrow_right
 local LanguageName = require("common/language_name")
 local paths = require("common/paths")
 local StandalonePage = require("modules/filebrowser/patches/standalone_page")
@@ -97,6 +99,14 @@ local function save_zen_config(cfg)
     end
 end
 
+local function rebuild_home()
+    if not _zen_plugin then return end
+    local home = SharedState.get(_zen_plugin, "home")
+    if home and type(home.rebuildActive) == "function" then
+        home.rebuildActive()
+    end
+end
+
 local function get_display_mode(tab_id, group_name, fallback)
     local cfg = load_zen_config()
     local group_view = cfg and cfg.group_view
@@ -171,7 +181,8 @@ local function get_group_reverse(tab_id)
 end
 
 local function set_group_reverse(tab_id, reverse)
-    if tab_id ~= "authors" and tab_id ~= "series" and tab_id ~= "languages" then return end
+    if tab_id ~= "authors" and tab_id ~= "series"
+            and tab_id ~= "languages" and tab_id ~= "tags" then return end
     local cfg = load_zen_config()
     if type(cfg) ~= "table" then return end
     if type(cfg.group_view) ~= "table" then cfg.group_view = {} end
@@ -180,6 +191,44 @@ local function set_group_reverse(tab_id, reverse)
     end
     cfg.group_view.group_reverse[tab_id] = reverse == true
     save_zen_config(cfg)
+    rebuild_home()
+end
+
+local function get_authors_collate()
+    local cfg = load_zen_config()
+    local stored = cfg and cfg.group_view and cfg.group_view.authors_collate
+    return author_sort.normalize(stored)
+end
+
+local function set_authors_collate(collate)
+    if not author_sort.isMode(collate) then return end
+    local cfg = load_zen_config()
+    if type(cfg) ~= "table" then return end
+    if type(cfg.group_view) ~= "table" then cfg.group_view = {} end
+    cfg.group_view.authors_collate = collate
+    save_zen_config(cfg)
+    rebuild_home()
+end
+
+local function get_group_collate(tab_id)
+    local cfg = load_zen_config()
+    local group_collate = cfg and cfg.group_view and cfg.group_view.group_collate
+    return group_collate and group_collate[tab_id] == "title_natural"
+        and "title_natural" or "title"
+end
+
+local function set_group_collate(tab_id, collate)
+    if tab_id ~= "series" and tab_id ~= "languages" and tab_id ~= "tags" then return end
+    if collate ~= "title" and collate ~= "title_natural" then return end
+    local cfg = load_zen_config()
+    if type(cfg) ~= "table" then return end
+    if type(cfg.group_view) ~= "table" then cfg.group_view = {} end
+    if type(cfg.group_view.group_collate) ~= "table" then
+        cfg.group_view.group_collate = {}
+    end
+    cfg.group_view.group_collate[tab_id] = collate
+    save_zen_config(cfg)
+    rebuild_home()
 end
 
 local function get_tags_global_collate()
@@ -193,18 +242,6 @@ local function get_tags_global_collate()
     return "title"
 end
 
-local function set_tags_global_collate(collate)
-    if type(collate) ~= "string" or collate == "" then return end
-    local cfg = load_zen_config()
-    if type(cfg) ~= "table" then return end
-    if type(cfg.group_view) ~= "table" then cfg.group_view = {} end
-    if type(cfg.group_view.tags_global) ~= "table" then
-        cfg.group_view.tags_global = {}
-    end
-    cfg.group_view.tags_global.collate = collate
-    save_zen_config(cfg)
-end
-
 local function is_tags_global_reverse()
     local cfg = load_zen_config()
     local group_view = cfg and cfg.group_view
@@ -213,17 +250,6 @@ local function is_tags_global_reverse()
         return tags_global.reverse == true
     end
     return false
-end
-
-local function set_tags_global_reverse(reverse)
-    local cfg = load_zen_config()
-    if type(cfg) ~= "table" then return end
-    if type(cfg.group_view) ~= "table" then cfg.group_view = {} end
-    if type(cfg.group_view.tags_global) ~= "table" then
-        cfg.group_view.tags_global = {}
-    end
-    cfg.group_view.tags_global.reverse = reverse == true
-    save_zen_config(cfg)
 end
 
 local function get_detail_reverse(tab_id, group_name, fallback)
@@ -426,6 +452,20 @@ local function build_group_item_table(groups, data_type)
             _zen_group  = (data_type == "series") and group or nil,
         })
     end
+
+    if #items > 1 then
+        if data_type == "authors" then
+            local collate = get_authors_collate()
+            table.sort(items, function(a, b)
+                return author_sort.less(a.text, b.text, collate)
+            end)
+        elseif data_type == "series" or data_type == "languages" or data_type == "tags" then
+            local natural = get_group_collate(data_type) == "title_natural"
+            table.sort(items, function(a, b)
+                return title_sort.less(a.text, b.text, natural)
+            end)
+        end
+    end
     if #items == 0 then
         table.insert(items, {
             text                    = empty_message,
@@ -435,8 +475,9 @@ local function build_group_item_table(groups, data_type)
         })
     end
 
-    -- Apply reverse sort if enabled (tags use per-group or global book sort).
-    if (data_type == "authors" or data_type == "series" or data_type == "languages")
+    -- Apply reverse sort if enabled.
+    if (data_type == "authors" or data_type == "series"
+            or data_type == "languages" or data_type == "tags")
             and get_group_reverse(data_type) and #items > 0 then
         -- Reverse the array (skip the placeholder)
         if items[1].text ~= empty_message then
@@ -543,117 +584,115 @@ end
 
 
 -------------------------------------------------------------------------------
--- showGroupSortDialog: show ascending/descending sort dialog for group view
--- tab_id: "authors" | "series" | "tags"
+-- showGroupSortDialog: show sort dialog for a group view
+-- tab_id: "authors" | "series" | "languages" | "tags"
 -- menu: the Menu instance to refresh after sort change
 -------------------------------------------------------------------------------
 local function showGroupSortDialog(tab_id, menu)
     local _ = require("gettext")
-
-    -- Tags: show the same rich sort dialog as the detail view;
-    -- settings are stored in zen_ui_config and used as defaults for tag detail views.
-    if tab_id == "tags" then
-        local ButtonDialog = require("ui/widget/buttondialog")
-        local UIManager    = require("ui/uimanager")
-
-        local cur_collate = get_tags_global_collate()
-        local cur_reverse = is_tags_global_reverse()
-
-        local SORT_OPTIONS = {
-            { key = "series_index",  text = "\u{F0CB}  " .. _("Series number") },
-            { key = "title",         text = "\u{F031}  " .. _("Title") },
-            { key = "title_natural", text = "\u{F04BB}  " .. _("Title natural") },
-            { key = "strcoll",       text = icons.filename .. "  " .. _("Filename") },
-            { key = "access",        text = "\u{F073}  " .. _("Recently read") },
-        }
-
-        local sort_dialog
-        local sort_buttons = {}
-        for _i, opt in ipairs(SORT_OPTIONS) do
-            local is_active = cur_collate == opt.key
-            table.insert(sort_buttons, {{
-                text     = opt.text .. (is_active and "  \u{2713}" or ""),
-                align    = "left",
-                enabled  = not is_active,
-                callback = function()
-                    set_tags_global_collate(opt.key)
-                    UIManager:close(sort_dialog)
-                end,
-            }})
-        end
-        table.insert(sort_buttons, {{
-            text     = "\u{F0DC}  " .. _("Order") .. "  \u{25B6}",
-            align    = "left",
-            callback = function()
-                UIManager:close(sort_dialog)
-                local order_dialog
-                order_dialog = ButtonDialog:new{
-                    title       = _("Sort order"),
-                    title_align = "center",
-                    buttons     = {
-                        {{
-                            text     = "\u{F15D}  " .. _("Ascending") .. (not cur_reverse and "  \u{2713}" or ""),
-                            align    = "left",
-                            enabled  = cur_reverse,
-                            callback = function()
-                                set_tags_global_reverse(false)
-                                UIManager:close(order_dialog)
-                            end,
-                        }},
-                        {{
-                            text     = "\u{F15E}  " .. _("Descending") .. (cur_reverse and "  \u{2713}" or ""),
-                            align    = "left",
-                            enabled  = not cur_reverse,
-                            callback = function()
-                                set_tags_global_reverse(true)
-                                UIManager:close(order_dialog)
-                            end,
-                        }},
-                    },
-                }
-                UIManager:show(order_dialog)
-            end,
-        }})
-        sort_dialog = ButtonDialog:new{
-            title       = _("Sort books by"),
-            title_align = "center",
-            buttons     = sort_buttons,
-        }
-        UIManager:show(sort_dialog)
-        return
-    end
-
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local UIManager = require("ui/uimanager")
     local ok_fm, FM = pcall(require, "apps/filemanager/filemanager")
     local fm = ok_fm and FM and FM.instance
     if not fm then return end
 
     local title = tab_id == "authors" and _("Sort authors")
-        or tab_id == "languages" and _("Sort languages") or _("Sort series")
+        or tab_id == "languages" and _("Sort languages")
+        or tab_id == "tags" and _("Tags") or _("Sort series")
 
-    fm.file_chooser:showSortOrderDialog({
-        title           = title,
-        current_reverse = get_group_reverse(tab_id),
-        on_select       = function(reverse)
-            set_group_reverse(tab_id, reverse)
-            if menu then
-                local ok, db = pcall(require, "common/db_bookinfo")
-                if ok then
-                    local groups
-                    if tab_id == "authors" then
-                        groups = db.getGroupedByAuthor()
-                    elseif tab_id == "languages" then
-                        groups = db.getGroupedByLanguage()
-                    elseif tab_id == "tags" then
-                        groups = db.getGroupedByTags()
-                    else
-                        groups = db.getGroupedBySeries()
-                    end
-                    menu.item_table = build_group_item_table(groups, tab_id)
-                    menu:updateItems()
-                end
-            end
+    local function rebuild()
+        if not menu then return end
+        local ok, db = pcall(require, "common/db_bookinfo")
+        if not ok then return end
+        local groups
+        if tab_id == "authors" then
+            groups = db.getGroupedByAuthor()
+        elseif tab_id == "languages" then
+            groups = db.getGroupedByLanguage()
+        elseif tab_id == "tags" then
+            groups = db.getGroupedByTags()
+        else
+            groups = db.getGroupedBySeries()
+        end
+        menu.item_table = build_group_item_table(groups, tab_id)
+        menu:updateItems()
+    end
+
+    if tab_id == "authors" then
+        local current = get_authors_collate()
+        local current_reverse = get_group_reverse(tab_id)
+        local sort_dialog
+        local buttons = author_sort.modeButtons(current, _, function(collate)
+            UIManager:close(sort_dialog)
+            set_authors_collate(collate)
+            rebuild()
+        end)
+        buttons[#buttons + 1] = {{
+            text = "\u{F0DC}  " .. _("Order") .. "  " .. submenu_arrow,
+            align = "left",
+            callback = function()
+                UIManager:close(sort_dialog)
+                fm.file_chooser:showSortOrderDialog({
+                    title = title,
+                    current_reverse = current_reverse,
+                    on_select = function(reverse)
+                        set_group_reverse(tab_id, reverse)
+                        rebuild()
+                    end,
+                })
+            end,
+        }}
+        sort_dialog = ButtonDialog:new{
+            title = title,
+            title_align = "center",
+            buttons = buttons,
+        }
+        UIManager:show(sort_dialog)
+        return
+    end
+
+    local current = get_group_collate(tab_id)
+    local current_reverse = get_group_reverse(tab_id)
+    local sort_dialog
+    local buttons = {}
+    local options = {
+        { key = "title", text = "\u{F031}  " .. _("Title") },
+        { key = "title_natural", text = "\u{F04BB}  " .. _("Title natural") },
+    }
+    for _i, option in ipairs(options) do
+        local active = current == option.key
+        buttons[#buttons + 1] = {{
+            text = option.text .. (active and "  \u{2713}" or ""),
+            align = "left",
+            enabled = not active,
+            callback = function()
+                UIManager:close(sort_dialog)
+                set_group_collate(tab_id, option.key)
+                rebuild()
+            end,
+        }}
+    end
+    buttons[#buttons + 1] = {{
+        text = "\u{F0DC}  " .. _("Order") .. "  " .. submenu_arrow,
+        align = "left",
+        callback = function()
+            UIManager:close(sort_dialog)
+            fm.file_chooser:showSortOrderDialog({
+                title = title,
+                current_reverse = current_reverse,
+                on_select = function(reverse)
+                    set_group_reverse(tab_id, reverse)
+                    rebuild()
+                end,
+            })
         end,
-    })
+    }}
+    sort_dialog = ButtonDialog:new{
+        title = title,
+        title_align = "center",
+        buttons = buttons,
+    }
+    UIManager:show(sort_dialog)
 end
 
 -------------------------------------------------------------------------------
@@ -799,7 +838,9 @@ local function showDetailSortDialog(group_name, tab_id, menu, files, reload_file
 
         local sorted_files = reload_files and reload_files(collate, reverse)
             or sortDetailFiles(files, collate, reverse)
-        sorted_files = apply_status_filter(sorted_files)
+        if tab_id ~= "status" then
+            sorted_files = apply_status_filter(sorted_files)
+        end
 
         local lfs_mod  = require("libs/libkoreader-lfs")
         local util_mod = require("util")
@@ -846,7 +887,7 @@ local function showDetailSortDialog(group_name, tab_id, menu, files, reload_file
 
     -- Order submenu
     table.insert(sort_buttons, {{
-        text     = "\u{F0DC}  " .. _("Order") .. "  ▶",
+        text     = "\u{F0DC}  " .. _("Order") .. "  " .. submenu_arrow,
         align    = "left",
         callback = function()
             UIManager:close(sort_dialog)
@@ -960,7 +1001,8 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
     local _ = require("gettext")
     local UIManager = require("ui/uimanager")
 
-    local files      = group_item._zen_files or {}
+    local files      = type(group_item._zen_load_files) == "function"
+        and group_item._zen_load_files() or group_item._zen_files or {}
     local group_name = group_item.text or ""
     local detail_name
     if tab_id == "authors" then
@@ -969,8 +1011,10 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
         detail_name = "languages_detail"
     elseif tab_id == "tags" then
         detail_name = "tags_detail"
-    else
+    elseif tab_id == "series" then
         detail_name = "series_detail"
+    else
+        detail_name = tab_id .. "_detail"
     end
     for _i, active_menu in ipairs(_detail_menus) do
         if active_menu.name == detail_name then
@@ -995,7 +1039,9 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
 
     -- Sort files based on current settings
     local sorted_files = sortDetailFiles(files, cur_collate, cur_reverse)
-    sorted_files = apply_status_filter(sorted_files)
+    if tab_id ~= "status" then
+        sorted_files = apply_status_filter(sorted_files)
+    end
 
     -- Build menu items from sorted files
     local lfs_mod  = require("libs/libkoreader-lfs")
@@ -1026,7 +1072,8 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
         table.insert(book_items, 1, { text = "\u{2B06} ..", is_go_up = true, mandatory = "" })
     end
 
-    local detail_menu = StandalonePage.create_menu{
+    local detail_menu
+    detail_menu = StandalonePage.create_menu{
         name = detail_name,
         title = group_name,
         item_table = book_items,
@@ -1059,6 +1106,11 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
                     _zen_select_cb = function()
                         return toggle_file_selection(menu_self, item)
                     end,
+                    _zen_after_status_change = group_item._zen_load_files and function(path)
+                        fm.file_chooser:refreshPath(path)
+                        detail_menu.close_callback()
+                        showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
+                    end or nil,
                 })
             end
         end,
@@ -1097,7 +1149,7 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
             parent = _languages_menu
         elseif tab_id == "tags" then
             parent = _tags_menu
-        else
+        elseif tab_id == "series" then
             parent = _series_menu
         end
         if parent then
@@ -1105,7 +1157,7 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
             if tab_id == "authors" then _authors_menu = nil
             elseif tab_id == "languages" then _languages_menu = nil
             elseif tab_id == "tags" then _tags_menu = nil
-            else _series_menu = nil end
+            elseif tab_id == "series" then _series_menu = nil end
         end
     end
 
@@ -1147,7 +1199,7 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
                 fm.file_chooser:showFileDialog({
                     _zen_group_files       = sorted_files,
                     _zen_group_name        = group_name,
-                    _zen_is_folder_view    = true,
+                    _zen_is_folder_view    = tab_id ~= "status",
                     _zen_sort_cb           = function()
                         showDetailSortDialog(group_name, tab_id, self, files)
                     end,
@@ -1494,6 +1546,19 @@ function M.showTagDetail(tag_name, injectNavbar, navbar_tab_id)
     local files = type(db.getTagBooks) == "function" and db.getTagBooks(tag_name) or {}
     return showDetailView(
         { text = tag_name, _zen_files = files }, injectNavbar, "tags", navbar_tab_id)
+end
+
+function M.showStatusView(status, label, injectNavbar, navbar_tab_id)
+    if type(status) ~= "string" or status == "" then return end
+    refresh_shared_state()
+    local ok, index = pcall(require, "common/tbr_index")
+    if not ok or type(index.getByStatuses) ~= "function" then return end
+    return showDetailView({
+        text = label or status,
+        _zen_load_files = function()
+            return index.getByStatuses({ [status] = true })
+        end,
+    }, injectNavbar, "status", navbar_tab_id)
 end
 
 -------------------------------------------------------------------------------

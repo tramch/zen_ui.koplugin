@@ -17,6 +17,7 @@ describe("navbar settings", function()
     local dispatcher_text
     local choose_folder
     local choose_tag
+    local kindle_available
 
     local function find_arrange_item(id)
         for _i, item in ipairs(arrange_options.item_table) do
@@ -40,6 +41,7 @@ describe("navbar settings", function()
         dispatcher_text = "Nothing"
         choose_folder = nil
         choose_tag = nil
+        kindle_available = false
         touch_menu = {
             item_table = {},
             item_table_stack = {},
@@ -124,6 +126,10 @@ describe("navbar settings", function()
         })
         ZenSpec.replace("modules/menu/app_launcher/plugin_scan", {
             scan = function() return {} end,
+            exists = function() return false end,
+            installed = function()
+                return kindle_available and { kindle = true } or {}
+            end,
         })
         ZenSpec.replace("modules/menu/app_launcher/native_menu", {
             scan = function(scope)
@@ -298,6 +304,33 @@ describe("navbar settings", function()
         assert.are.equal(2, saved)
     end)
 
+    it("offers Kindle only when installed and can hide its virtual folder", function()
+        local navbar = build_navbar()
+        navbar.sub_item_table[1].callback()
+        arrange_options.add_item_table[1].callback(touch_menu)
+        local kindle
+        for _i, item in ipairs(picker_options.items) do
+            if item.id == "kindle" then kindle = item; break end
+        end
+        assert.is_nil(kindle)
+
+        kindle_available = true
+        arrange_options.add_item_table[1].callback(touch_menu)
+        for _i, item in ipairs(picker_options.items) do
+            if item.id == "kindle" then kindle = item; break end
+        end
+        assert.is_table(kindle)
+        picker_options.on_select(kindle)
+
+        navbar = build_navbar()
+        navbar.sub_item_table[1].callback()
+        local settings = find_arrange_item("kindle").sub_item_table_func()
+        assert.are.equal("Hide Kindle Library folder", settings[1].text)
+        assert.is_false(settings[1].checked_func())
+        settings[1].callback()
+        assert.is_true(config.kindle.hide_library_folder)
+    end)
+
     it("changes the label and icon of an existing built-in Folder tab", function()
         config.navbar.show_tabs.folder = true
         config.navbar.folder_path = "/home/Fiction"
@@ -388,6 +421,38 @@ describe("navbar settings", function()
         assert.is_true(config.navbar.show_tabs.ct_1)
         assert.is_true(config.navbar.show_tabs.ct_2)
         assert.is_true(config.navbar.show_tabs.ct_3)
+    end)
+
+    it("adds a status tab using the status name", function()
+        local navbar = build_navbar()
+        navbar.sub_item_table[1].callback()
+        local add_types = {}
+        for _i, item in ipairs(arrange_options.add_item_table) do
+            add_types[item.text] = item
+        end
+        assert.is_nil(add_types.Finished)
+        add_types.Tab.callback(touch_menu)
+
+        local add_tabs = {}
+        for _i, item in ipairs(picker_options.items) do add_tabs[item.text] = item end
+        for _i, label in ipairs({
+            "Unread", "Reading", "To Be Read", "On hold", "Finished",
+        }) do assert.is_table(add_tabs[label]) end
+        assert.are.equal("to_be_read", add_tabs["To Be Read"].id)
+        assert.is_nil(add_tabs["To Be Read"].status)
+        assert.is_nil(add_tabs["Filter by status"])
+
+        picker_options.on_select(add_tabs.Finished)
+
+        assert.same({
+            id = "ct_1", type = "status", status = "complete",
+            label = "Finished", label_auto = true, icon = "library",
+        }, config.navbar.custom_tabs[1])
+        assert.is_true(config.navbar.show_tabs.ct_1)
+        assert.are.equal(3, #touch_menu.item_table)
+        assert.are.equal("Icon: library", touch_menu.item_table[1].text_func())
+        assert.are.equal("Label: Finished", touch_menu.item_table[2].text_func())
+        assert.are.equal("Delete", touch_menu.item_table[3].text)
     end)
 
     it("changes labels and icons for folder and specific-tag tabs", function()

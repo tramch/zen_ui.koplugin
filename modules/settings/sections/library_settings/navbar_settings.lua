@@ -16,6 +16,7 @@ local PluginScan = require("modules/menu/app_launcher/plugin_scan")
 local DispatcherMenu = require("common/dispatcher_menu")
 local ButtonModel = require("common/nav_button_model")
 local Destination = require("common/library_destination")
+local Kindle = require("modules/filebrowser/patches/kindle_virtual_library")
 
 local M = {}
 
@@ -163,6 +164,7 @@ function M.build(ctx)
     local navbar_tab_items = {
         { id = "books",       text = _("Library")      },
         { id = "folder",      text_func = get_folder_tab_label },
+        { id = "kindle",      text = _("Kindle Library") },
         { id = "manga",       text = _("Manga")         },
         { id = "news",        text = _("News")          },
         { id = "continue",    text = _("Continue")      },
@@ -199,7 +201,7 @@ function M.build(ctx)
     end
 
     local default_tab_ids = {
-        "books", "folder", "manga", "news", "history", "favorites",
+        "books", "folder", "kindle", "manga", "news", "history", "favorites",
         "collections", "authors", "series", "languages", "home", "tags", "to_be_read",
     }
 
@@ -236,10 +238,15 @@ function M.build(ctx)
         return tab_item_by_id[id] ~= nil or is_known_custom_tab(id)
     end
 
+    local function is_tab_available(id)
+        return id ~= "kindle" or Kindle.isAvailable()
+    end
+
     local function countEnabledTabs()
         local count = 0
         for _i, id in ipairs(config.navbar.tab_order) do
-            if config.navbar.show_tabs[id] == true and is_known_tab(id) then
+            if config.navbar.show_tabs[id] == true and is_known_tab(id)
+                    and is_tab_available(id) then
                 count = count + 1
             end
         end
@@ -290,6 +297,7 @@ function M.build(ctx)
     local build_ct_sub_items
     local build_builtin_tab_items
     local addTagTab
+    local addStatusTab
 
     local function is_draft_tab(ct)
         return type(ct) == "table" and type(ct._zen_draft_commit) == "function"
@@ -299,6 +307,9 @@ function M.build(ctx)
         if ct.label and ct.label ~= "" then return ct.label end
         if ct.type == "tag" then
             return ct.tag or _("Tag")
+        end
+        if ct.type == "status" then
+            return ButtonModel.statusLabel(ct.status) or _("Custom")
         end
         if ct.type == "folder" then
             return Destination.folderLabel(ct.folder)
@@ -363,10 +374,24 @@ function M.build(ctx)
         end
         local picker_items = {}
         for _i, tab in ipairs(navbar_tab_items) do
-            if not selected[tab.id] then
+            if not selected[tab.id] and is_tab_available(tab.id) then
                 picker_items[#picker_items + 1] = {
                     id = tab.id,
                     text = tab.id == "tags" and _("All tags") or get_tab_item_text(tab),
+                }
+            end
+        end
+        local selected_status = {}
+        for _i, tab in ipairs(config.navbar.custom_tabs or {}) do
+            if selected[tab.id] and tab.type == "status" then
+                selected_status[tab.status] = true
+            end
+        end
+        for _i, status in ipairs(ButtonModel.statuses()) do
+            if not selected_status[status.key] then
+                picker_items[#picker_items + 1] = {
+                    text = status.label,
+                    status = status,
                 }
             end
         end
@@ -377,6 +402,10 @@ function M.build(ctx)
             items = picker_items,
             back_hold_callback = touch_menu and touch_menu.backToSettingsRoot,
             on_select = function(item)
+                if item.status then
+                    addStatusTab(touch_menu, item.status)
+                    return
+                end
                 ensureTabOrder(item.id)
                 config.navbar.show_tabs[item.id] = countEnabledTabs() < navbar_max_tabs
                 save_and_defer_navbar_refresh()
@@ -575,6 +604,19 @@ function M.build(ctx)
         end, touch_menu)
     end
 
+    addStatusTab = function(touch_menu, item)
+        if not item then return end
+        local ct = {
+            type = "status",
+            status = item.key,
+            label = item.label,
+            label_auto = true,
+            icon = "library",
+        }
+        commitCustomTab(ct)
+        openCustomTabSettings(touch_menu, ct)
+    end
+
     local function addFolderTab(touch_menu)
         Destination.chooseFolder(function(path)
             local ct = {
@@ -744,7 +786,7 @@ function M.build(ctx)
                     chooseKoreaderMenuTab(ct, touch_menu)
                 end,
             }, icons.open_menu))
-        elseif ok_disp then
+        elseif ct.type == "action" and ok_disp then
             local dispatch_items = {}
             local caller = {}
             Dispatcher:addSubMenu(caller, dispatch_items, ct, "action")
@@ -812,8 +854,11 @@ function M.build(ctx)
                                 if txt and txt ~= "" then
                                     ct.label = txt
                                     ct.label_auto = false
-                                elseif ct.type == "tag" or ct.type == "folder" then
+                                elseif ct.type == "tag" or ct.type == "status"
+                                        or ct.type == "folder" then
                                     ct.label = ct.type == "tag" and ct.tag
+                                        or ct.type == "status"
+                                            and ButtonModel.statusLabel(ct.status)
                                         or Destination.folderLabel(ct.folder)
                                     ct.label_auto = true
                                 else
@@ -877,19 +922,21 @@ function M.build(ctx)
     local function build_default_tab_items()
         local items = {}
         for _i, tab_id in ipairs(default_tab_ids) do
-            local tid = tab_id
-            local label = get_default_tab_label(tid)
-            items[#items + 1] = {
-                text = label,
-                radio = true,
-                checked_func = function()
-                    return (config.navbar.default_tab or "books") == tid
-                end,
-                callback = function()
-                    config.navbar.default_tab = tid
-                    save_and_apply_navbar()
-                end,
-            }
+            if is_tab_available(tab_id) then
+                local tid = tab_id
+                local label = get_default_tab_label(tid)
+                items[#items + 1] = {
+                    text = label,
+                    radio = true,
+                    checked_func = function()
+                        return (config.navbar.default_tab or "books") == tid
+                    end,
+                    callback = function()
+                        config.navbar.default_tab = tid
+                        save_and_apply_navbar()
+                    end,
+                }
+            end
         end
         if type(config.navbar.custom_tabs) == "table" then
             for _i, ct in ipairs(config.navbar.custom_tabs) do
@@ -1172,6 +1219,22 @@ function M.build(ctx)
         }
     end
 
+    local function build_kindle_tab_items()
+        return {{
+            text = _("Hide Kindle Library folder"),
+            checked_func = function()
+                return type(config.kindle) == "table"
+                    and config.kindle.hide_library_folder == true
+            end,
+            callback = function()
+                if type(config.kindle) ~= "table" then config.kindle = {} end
+                config.kindle.hide_library_folder =
+                    config.kindle.hide_library_folder ~= true
+                save_and_reflow_navbar()
+            end,
+        }}
+    end
+
     local function build_news_tab_items()
         return {
             {
@@ -1223,6 +1286,8 @@ function M.build(ctx)
             items = build_books_tab_items()
         elseif id == "folder" then
             items = build_folder_tab_items()
+        elseif id == "kindle" then
+            items = build_kindle_tab_items()
         elseif id == "manga" then
             items = build_manga_tab_items()
         elseif id == "news" then
@@ -1313,48 +1378,49 @@ function M.build(ctx)
         end
         sort_items = build_sort_items()
 
+        local add_items = {
+            IconItem.decorate({
+                text = _("Tab"),
+                keep_menu_open = true,
+                callback = addBuiltinTab,
+            }, icons.settings_navbar),
+            IconItem.decorate({
+                text = _("Action"),
+                keep_menu_open = true,
+                callback = addActionTab,
+            }, icons.action),
+            IconItem.decorate({
+                text = _("Folder"),
+                keep_menu_open = true,
+                callback = addFolderTab,
+            }, icons.settings_folders),
+            IconItem.decorate({
+                text = _("Specific tag"),
+                keep_menu_open = true,
+                callback = addTagTab,
+            }, icons.keywords),
+            IconItem.decorate({
+                text = _("Control"),
+                keep_menu_open = true,
+                callback = addQuickSettingTab,
+            }, icons.settings_quick),
+            IconItem.decorate({
+                text = _("Plugin Menu"),
+                keep_menu_open = true,
+                callback = addPluginTab,
+            }, icons.plugin),
+            IconItem.decorate({
+                text = _("KOReader menu"),
+                keep_menu_open = true,
+                callback = addKoreaderMenuTab,
+            }, icons.open_menu),
+        }
         ZenArrangeList.show{
             title = _("Tabs"),
             item_table = sort_items,
             add_title = _("Add"),
             hide_footer_cancel = true,
-            add_item_table = {
-                IconItem.decorate({
-                    text = _("Tab"),
-                    keep_menu_open = true,
-                    callback = addBuiltinTab,
-                }, icons.settings_navbar),
-                IconItem.decorate({
-                    text = _("Action"),
-                    keep_menu_open = true,
-                    callback = addActionTab,
-                }, icons.action),
-                IconItem.decorate({
-                    text = _("Folder"),
-                    keep_menu_open = true,
-                    callback = addFolderTab,
-                }, icons.settings_folders),
-                IconItem.decorate({
-                    text = _("Specific tag"),
-                    keep_menu_open = true,
-                    callback = addTagTab,
-                }, icons.keywords),
-                IconItem.decorate({
-                    text = _("Control"),
-                    keep_menu_open = true,
-                    callback = addQuickSettingTab,
-                }, icons.settings_quick),
-                IconItem.decorate({
-                    text = _("Plugin Menu"),
-                    keep_menu_open = true,
-                    callback = addPluginTab,
-                }, icons.plugin),
-                IconItem.decorate({
-                    text = _("KOReader menu"),
-                    keep_menu_open = true,
-                    callback = addKoreaderMenuTab,
-                }, icons.open_menu),
-            },
+            add_item_table = add_items,
             callback = function()
                 local new_order = {}
                 local ordered = {}

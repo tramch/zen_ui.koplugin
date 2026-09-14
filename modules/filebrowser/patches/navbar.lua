@@ -23,6 +23,7 @@ local function apply_navbar()
     local MemoryPolicy = require("common/memory_policy")
     local SharedState = require("common/shared_state")
     local ButtonModel = require("common/nav_button_model")
+    local Kindle = require("modules/filebrowser/patches/kindle_virtual_library")
     local StandalonePage = require("modules/filebrowser/patches/standalone_page")
     local NativeMenu = require("modules/menu/app_launcher/native_menu")
     local PluginScan = require("modules/menu/app_launcher/plugin_scan")
@@ -97,6 +98,7 @@ local function apply_navbar()
         show_tabs = {
             books = true,
             folder = false,
+            kindle = false,
             manga = true,
             news = true,
             continue = true,
@@ -238,6 +240,11 @@ local function apply_navbar()
             icon = getFolderIcon(),
         },
         {
+            id = "kindle",
+            label = _("Kindle Library"),
+            icon = utils.resolveLocalIcon(_icons_dir, "library"),
+        },
+        {
             id = "manga",
             label = _("Manga"),
             icon = "tab_manga",
@@ -355,7 +362,7 @@ local function apply_navbar()
     end
 
     local skip_tabs_for_state = {
-        books = true, manga = true, news = true,
+        books = true, kindle = true, manga = true, news = true,
         folder = true, continue = true, search = true, stats = true, exit = true,
     }
     local group_view_tabs = {
@@ -368,6 +375,16 @@ local function apply_navbar()
             if type(tab) == "table" and tab.id == tab_id and tab.type == "tag"
                     and type(tab.tag) == "string"
                     and tab.tag ~= "" then
+                return tab
+            end
+        end
+    end
+
+    local function getCustomStatusTab(tab_id)
+        if type(config.custom_tabs) ~= "table" then return nil end
+        for _i, tab in ipairs(config.custom_tabs) do
+            if type(tab) == "table" and tab.id == tab_id and tab.type == "status"
+                    and ButtonModel.statusLabel(tab.status) then
                 return tab
             end
         end
@@ -396,10 +413,13 @@ local function apply_navbar()
 
     local function isGroupViewTab(tab_id)
         return group_view_tabs[tab_id] == true or getCustomTagTab(tab_id) ~= nil
+            or getCustomStatusTab(tab_id) ~= nil
     end
 
     local function getGroupViewTab(tab_id)
-        return getCustomTagTab(tab_id) and "tags" or tab_id
+        if getCustomTagTab(tab_id) then return "tags" end
+        if getCustomStatusTab(tab_id) then return "status" end
+        return tab_id
     end
 
     -- Forward declarations; defined later
@@ -1187,6 +1207,10 @@ local function apply_navbar()
         onTabBooks()
     end
 
+    local function onTabKindle()
+        return Kindle.open()
+    end
+
     local function onTabManga()
         if config.manga_action == "folder" and config.manga_folder ~= "" then
             local opened, folder_path = openFileManagerFolder(config.manga_folder, "manga")
@@ -1241,6 +1265,17 @@ local function apply_navbar()
         end
         setActiveTab(tab_id or "tags")
         GroupView.showTagDetail(tag_name, injectStandaloneNavbar, tab_id or "tags")
+        return true
+    end
+
+    local function openStatus(status, label, tab_id)
+        local GroupView = get_shared("group_view")
+        if not (ButtonModel.statusLabel(status) and GroupView
+                and type(GroupView.showStatusView) == "function") then
+            return false
+        end
+        setActiveTab(tab_id)
+        GroupView.showStatusView(status, label, injectStandaloneNavbar, tab_id)
         return true
     end
 
@@ -1504,6 +1539,9 @@ local function apply_navbar()
     end
 
     local function onTabMenu()
+        local stack = UIManager._window_stack
+        local top = type(stack) == "table" and stack[#stack]
+        if Kindle.showContextMenu(top and top.widget) then return end
         local fm = FileManager.instance
         if not fm or not fm.file_chooser then return end
         local fc = fm.file_chooser
@@ -1527,6 +1565,7 @@ local function apply_navbar()
     local tab_callbacks = {
         books = onTabBooks,
         folder = onTabFolder,
+        kindle = onTabKindle,
         manga = onTabManga,
         news = onTabNews,
         continue = onTabContinue,
@@ -1551,6 +1590,7 @@ local function apply_navbar()
     local default_tab_whitelist = {
         books = true,
         folder = true,
+        kindle = true,
         manga = true,
         news = true,
         history = true,
@@ -1567,6 +1607,7 @@ local function apply_navbar()
     local active_tab_whitelist = {
         books = true,
         folder = true,
+        kindle = true,
         manga = true,
         news = true,
         authors = true,
@@ -1583,14 +1624,13 @@ local function apply_navbar()
     local function shouldTrackActiveTab(tab_id)
         return active_tab_whitelist[tab_id] == true
             or getCustomTagTab(tab_id) ~= nil
+            or getCustomStatusTab(tab_id) ~= nil
             or getCustomFolderTab(tab_id) ~= nil
     end
 
     local function is_tab_enabled(tab_id)
-        if tab_id:sub(1, 3) == "ct_" then
-            return config.show_tabs[tab_id] == true
-        end
         return config.show_tabs[tab_id] == true
+            and (tab_id ~= "kindle" or Kindle.isAvailable())
     end
 
     local function first_enabled_default_tab()
@@ -1650,7 +1690,14 @@ local function apply_navbar()
             return
         end
         if shouldTrackActiveTab(tab_id) then
+            local fm = FileManager.instance
+            local flash_library_home = fm and (
+                (tab_id == "home" and fm._zen_library_to_home_started_at)
+                or (tab_id == "books" and fm._zen_home_to_library_started_at))
             cb()
+            if flash_library_home then
+                UIManager:nextTick(function() UIManager:setDirty(nil, "flashui") end)
+            end
             if tab_id ~= "home" and not tabStaysInFileManager(tab_id) then
                 refreshAfterNavbarPageSwitch()
             end
@@ -1857,7 +1904,8 @@ local function apply_navbar()
 
         local icon
         if show_icon then
-            local icon_path = utils.resolveIcon(_icons_dir, tab.icon)
+            local icon_path = tab.icon:sub(1, 1) == "/" and tab.icon
+                or utils.resolveIcon(_icons_dir, tab.icon)
             if active_color then
                 icon = ColorIconWidget:new{
                     icon   = icon_path and nil or tab.icon,
@@ -1977,7 +2025,7 @@ local function apply_navbar()
     local function getVisibleTabs()
         local visible = {}
         for _i, id in ipairs(config.tab_order) do
-            if config.show_tabs[id] and tabs_by_id[id] then
+            if is_tab_enabled(id) and tabs_by_id[id] then
                 table.insert(visible, tabs_by_id[id])
                 if #visible >= navbar_max_tabs then break end
             end
@@ -2025,6 +2073,7 @@ local function apply_navbar()
                     end
                     entry.label = (ct.label ~= nil and ct.label ~= "") and ct.label
                         or ct.tag
+                        or (ct.type == "status" and ButtonModel.statusLabel(ct.status))
                         or (ct.type == "folder" and ButtonModel.label(nil, ct))
                         or ct.plugin_title
                         or (ct.koreader_menu and ct.koreader_menu.title)
@@ -2059,6 +2108,13 @@ local function apply_navbar()
                         local tab_id = ct.id
                         tab_callbacks[ct.id] = function()
                             openTag(tag_name, tab_id)
+                        end
+                    elseif ct.type == "status" and ButtonModel.statusLabel(ct.status) then
+                        local status = ct.status
+                        local label = entry.label
+                        local tab_id = ct.id
+                        tab_callbacks[tab_id] = function()
+                            openStatus(status, label, tab_id)
                         end
                     elseif ct.type == "folder" and type(ct.folder) == "string"
                             and ct.folder ~= "" then
@@ -2254,6 +2310,7 @@ local function apply_navbar()
         series_detail = true,
         languages_detail = true,
         tags_detail = true,
+        status_detail = true,
         stats = true,
     }
 
@@ -2289,11 +2346,13 @@ local function apply_navbar()
             return true
         end
         return standalone_view_names[widget.name] == true
+            or Kindle.isLibraryView(widget)
             or isRakuyomiView(widget)
             or widget._zen_standalone_navbar_injected == true
     end
 
     local function getStandaloneNextTickTabId(menu)
+        if Kindle.isLibraryView(menu) then return "kindle" end
         local Rakuyomi = getRakuyomi()
         if type(Rakuyomi.getStandaloneTabId) == "function" then
             return Rakuyomi.getStandaloneTabId(menu)
@@ -2321,6 +2380,7 @@ local function apply_navbar()
 
     local function isStandaloneNavbarView(menu)
         if standalone_view_names[menu.name] then return true end
+        if Kindle.isLibraryView(menu) then return true end
         if isRakuyomiView(menu) then return true end
         -- Collections list has no name but has these flags. PathChooser also
         -- has them, so exclude its explicit selection contract.
@@ -2391,6 +2451,12 @@ local function apply_navbar()
     local function tabForFileManagerPath(path)
         if not path then return end
 
+        local home_dir = paths.getHomeDir()
+                         or require("apps/filemanager/filemanagerutil").getDefaultDir()
+        if home_dir and normalizeFolderPath(path) == normalizeFolderPath(home_dir) then
+            return "books"
+        end
+
         local active_custom, active_folder = getCustomFolderTab(active_tab)
         if active_custom and isInFolderPath(path, active_folder) then
             return active_tab
@@ -2415,8 +2481,6 @@ local function apply_navbar()
             end
         end
 
-        local home_dir = paths.getHomeDir()
-                         or require("apps/filemanager/filemanagerutil").getDefaultDir()
         if home_dir and paths.isInHomeDir(path) then return "books" end
     end
 
@@ -2998,9 +3062,11 @@ local function apply_navbar()
                 or menu.name == "series_detail"
                 or menu.name == "languages_detail"
                 or menu.name == "tags_detail"
+                or menu.name == "status_detail"
             local is_booklist_view = view_tab_id == "history"
                 or view_tab_id == "favorites"
                 or view_tab_id == "collections"
+                or view_tab_id == "kindle"
             if new_h ~= old_h
                     and (is_group_view or is_booklist_view)
                     and reopenStandaloneAfterResize then
@@ -3287,6 +3353,12 @@ local function apply_navbar()
         -- menu_top_swipe (class-level patch on Menu.onSwipe).
     end
 
+    local orig_fm_onClose = FileManager.onClose
+    function FileManager:onClose(...)
+        utils.closeWidgetsAbove(self)
+        return orig_fm_onClose(self, ...)
+    end
+
     -- Save current library view state just before the reader takes over.
     -- The FM is about to be destroyed; we persist {tab, page} so that when
     -- showFileManager() recreates it we can scroll back to the right place.
@@ -3425,11 +3497,6 @@ local function apply_navbar()
         else
             injectNavbar(self)
         end
-        -- On reinit (FM already in the window stack), dirty-mark so the updated navbar
-        -- is painted. On fresh init, UIManager:show(fm) inside showFiles handles it.
-        if FileManager.instance == self and not self.invisible then
-            UIManager:setDirty(self, "ui")
-        end
     end
 
     -- Restore the view state (group tab + optional detail) when returning from the reader.
@@ -3513,7 +3580,7 @@ local function apply_navbar()
                 or FileManager.instance ~= fm then
             return false
         end
-        if resolve_default_tab() == "books" then
+        if resolve_default_tab() == "books" and active_tab == "books" then
             fm._zen_default_tab_bootstrapped = true
             return false
         end
@@ -3792,7 +3859,9 @@ local function apply_navbar()
         end
         -- If a detail view was open, open it synchronously too (stack: [fm, group_menu, detail_menu]).
         -- _repaint will then start from detail_menu and never show the intermediate views.
-        if state.detail_group and gv and gv.restoreDetail and not getCustomTagTab(state.tab) then
+        if state.detail_group and gv and gv.restoreDetail
+                and not getCustomTagTab(state.tab)
+                and not getCustomStatusTab(state.tab) then
             gv.restoreDetail(state.detail_group, state.tab, injectStandaloneNavbar)
         end
     end

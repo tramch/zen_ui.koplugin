@@ -8,7 +8,6 @@ local json = require("json")
 local logger = require("common/zen_logger").new("zen_updater")
 local ConfigManager = require("config/manager")
 local icons = require("common/inline_icon_map")
-local IconItem = require("common/ui/icon_menu_item")
 local MarkdownText = require("common/ui/markdown_text")
 
 local GITHUB_OWNER = "xZenLabs"
@@ -322,7 +321,11 @@ local function parse_release_entries(body)
 end
 
 --- Filter installable entries by channel. Stable: releases only.
---- Beta: releases + prereleases, preferring stable for the same M.m.p base.
+--- Beta: releases + beta prereleases, preferring stable for the same M.m.p base.
+local function is_beta_release(entry)
+    return not entry.prerelease or entry.version:match("%-beta%d*$") ~= nil
+end
+
 local function filter_entries_for_channel(entries, channel)
     local filtered = {}
     if channel == "stable" then
@@ -348,16 +351,18 @@ local function filter_entries_for_channel(entries, channel)
     local base_index = {}
     local replaced_with_stable = 0
     for _i, entry in ipairs(entries) do
-        local base = semver_base(entry.tag)
-        local idx = base_index[base]
-        if not idx then
-            table.insert(filtered, entry)
-            base_index[base] = #filtered
-        else
-            local existing = filtered[idx]
-            if existing.prerelease and not entry.prerelease then
-                filtered[idx] = entry
-                replaced_with_stable = replaced_with_stable + 1
+        if is_beta_release(entry) then
+            local base = semver_base(entry.tag)
+            local idx = base_index[base]
+            if not idx then
+                table.insert(filtered, entry)
+                base_index[base] = #filtered
+            else
+                local existing = filtered[idx]
+                if existing.prerelease and not entry.prerelease then
+                    filtered[idx] = entry
+                    replaced_with_stable = replaced_with_stable + 1
+                end
             end
         end
     end
@@ -391,13 +396,14 @@ local function filter_changelog_entries_for_channel(entries, channel)
         return stable
     end
 
-    logger.dbg(
-        "changelog beta filter in=",
-        #entries,
-        "out=",
-        #entries
-    )
-    return entries
+    local beta = {}
+    for _i, entry in ipairs(entries) do
+        if is_beta_release(entry) then
+            table.insert(beta, entry)
+        end
+    end
+    logger.dbg("changelog beta filter in=", #entries, "out=", #beta)
+    return beta
 end
 
 --- Best-effort HTTPS GET; returns the response body string or nil.
@@ -1599,18 +1605,17 @@ function M.run_update(plugin)
     end
 end
 
---- Returns a menu item for the top of the ZenOS settings page when an update
+--- Returns a header action for the ZenOS settings page when an update
 --- is available, or nil when no update has been detected.
-function M.build_update_available_item(plugin)
+function M.build_update_available_action(plugin)
     if not M._has_update then return nil end
-    return IconItem.decorate({
-        _zen_update_banner = true,  -- marker so root_items.callback can remove it
-        text          = _("Update available"),
-        keep_menu_open = true,
-        callback      = function()
+    return {
+        text = icons.update .. "  " .. _("Update available"),
+        zen_button = true,
+        callback = function()
             M.run_update(plugin)
         end,
-    }, icons.update)
+    }
 end
 
 --- Returns the "Update ZenOS" menu item for the Updates section.

@@ -54,11 +54,12 @@ return {
     filename     = "\u{F0224}",
     authors      = "\u{F0013}",  -- mdi-account
     series       = "\u{F0436}",  -- mdi-library-books
+    language     = "\u{F05CA}",  -- mdi-translate
     history      = "\u{F02DA}",  -- mdi-history
     keywords     = "\u{F12F7}",  -- mdi-tag-multiple
 
     -- details / info (context_menu.lua / opds.lua)
-    details      = "\u{F05A}",  -- mdi-information
+    details      = "\u{F02FD}", -- same information icon as About
     edit         = "\u{F090C}",  -- mdi-pencil
     label        = "\u{F04F9}",
     icon         = "\u{F02F5}",
@@ -93,7 +94,7 @@ return {
     settings_home     = "\u{F02DE}",
     settings_reader   = "\u{F14F7}",
     vocabulary        = "\u{F1349}",
-    settings_about    = "\u{F064E}",
+    settings_about    = "\u{F02FD}",
     widgets           = "\u{F072C}",
     settings_global   = "\u{F484}",
     settings_status   = "\u{F12F0}",
@@ -108,6 +109,7 @@ return {
     navbar_tabs       = "\u{F0837}",
     navbar_styling    = "\u{F03D8}",
     settings_stats    = "\u{F012A}",
+    calendar          = "\u{F073}",  -- nf-fa-calendar
     settings_opds     = "\u{F0B7D}",
     settings_sleep    = "\u{F04B2}",
     schedule_brightness = "\u{F0599}",

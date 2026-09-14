@@ -96,6 +96,8 @@ if _plugin_root then
             FontList:getFontList()  -- ensure fontlist + fontinfo initialized
             -- Scan bundled fonts dir into fontlist/fontinfo for FontChooser.
             local mark = {}
+            -- this will show an error about the symbols not being able to register for reader
+            -- this is normal and can be ignored
             pcall(FontList._readList, FontList, _plugin_root .. "/fonts", mark)
             if next(mark) then
                 -- Rebuild fontnames so FontChooser groups by family.
@@ -437,6 +439,7 @@ function ZenUI:init()
                     on_close = function()
                         self.config._meta.quickstart_completed = true
                         self.config._meta.quickstart_menu_tour_pending = true
+                        self.config._meta.quickstart_reader_tour_pending = true
                         self:saveConfig()
                         -- scheduleIn(0) lets UIManager finish the close-frame before
                         -- we force a full repaint and navbar reinject.
@@ -498,7 +501,9 @@ function ZenUI:init()
                 end
                 logger.info("showing ZenScreen")
                 local T = require("ffi/util").template
-                require("ui/uimanager"):show(ZenScreen:new{
+                local UIManager = require("ui/uimanager")
+                UIManager:forceRePaint()
+                UIManager:show(ZenScreen:new{
                     title       = _("ZenOS"),
                     title_icon  = true,
                     subtitle    = T(_("Updated to %1"), "v" .. current_ver),
@@ -799,7 +804,9 @@ function ZenUI:init()
                     if ui and ui.document then ui.tearing_down = was_tearing_down end
                     if not ui then return end
                     if ui.document then
-                        library_navigation.showFromReader(ui, _zen_plugin_ref)
+                        local kindle = require("modules/filebrowser/patches/kindle_virtual_library")
+                        library_navigation.showFromReader(ui, _zen_plugin_ref,
+                            { force_default = kindle.isBookPath(ui.document.file) })
                     else
                         local is_default_active = rawget(_G, "__ZEN_UI_NAVBAR_IS_DEFAULT_TAB_ACTIVE")
                         if type(is_default_active) == "function" and is_default_active() then
@@ -844,9 +851,8 @@ function ZenUI:init()
         self.ui.menu:registerToMainMenu(self)
     end
 
-    -- When the background check finds a new update, refresh the zen-tab icon
-    -- on every known menu instance. We update the icon in place rather than
-    -- forcing setUpdateItemTable to re-run, because KOReader's MenuSorter
+    -- Refresh any open settings page and all known zen-tab icons when an update
+    -- is found. Keep icon updates in place because KOReader's MenuSorter
     -- mutates self.menu_items during sorting (it nils out KOMenu:menu_buttons
     -- and every consumed leaf), so a second pass crashes in menusorter.lua at
     -- `ipairs(menu_table["KOMenu:menu_buttons"])`. The onShowMenu patch above
@@ -858,6 +864,10 @@ function ZenUI:init()
             if m_instance._zen_tab_item then
                 m_instance._zen_tab_item.icon = icon
             end
+        end
+        local settings_page = rawget(_G, "__ZEN_UI_SETTINGS_PAGE")
+        if settings_page and type(settings_page.updateItems) == "function" then
+            settings_page:updateItems()
         end
     end
     zen_updater._on_update_found = update_icon

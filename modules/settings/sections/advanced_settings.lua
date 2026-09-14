@@ -62,6 +62,21 @@ function M.build(ctx)
     })
 
     table.insert(items, {
+        text = _("Allow dragging reader modals"),
+        help_text = _("Restore KOReader's default draggable modal behavior."),
+        checked_func = function()
+            return type(config.developer) == "table"
+                and config.developer.allow_modal_drag == true
+        end,
+        callback = function()
+            if type(config.developer) ~= "table" then config.developer = {} end
+            config.developer.allow_modal_drag = config.developer.allow_modal_drag ~= true
+            plugin:saveConfig()
+            settings_apply.prompt_restart()
+        end,
+    })
+
+    table.insert(items, {
         text = _("Show hidden files"),
         checked_func = function()
             return type(config.developer) == "table"
@@ -103,18 +118,24 @@ function M.build(ctx)
         text = _("Debug logging"),
         help_text = _("Enable KOReader verbose debug logging. Logs are written to koreader.log. Takes effect immediately."),
         checked_func = function()
-            return G_reader_settings:isTrue("debug_verbose")
+            return G_reader_settings:isTrue("debug")
+                and G_reader_settings:isTrue("debug_verbose")
         end,
         callback = function()
-            local enabling = not G_reader_settings:isTrue("debug_verbose")
+            local dbg = require("dbg")
+            local enabling = not (G_reader_settings:isTrue("debug")
+                and G_reader_settings:isTrue("debug_verbose"))
             if enabling then
                 G_reader_settings:makeTrue("debug")
                 G_reader_settings:makeTrue("debug_verbose")
+                dbg:turnOn()
+                dbg:setVerbose(true)
             else
                 G_reader_settings:makeFalse("debug")
                 G_reader_settings:makeFalse("debug_verbose")
+                dbg:setVerbose(false)
+                dbg:turnOff()
             end
-            settings_apply.prompt_restart()
         end,
         keep_menu_open = true,
     })

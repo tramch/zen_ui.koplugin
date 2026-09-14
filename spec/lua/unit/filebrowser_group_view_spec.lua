@@ -15,7 +15,9 @@ describe("file browser group views", function()
     local legacy_tbr_calls
     local tbr_collection_changes
     local tbr_get_options
+    local status_get
     local select_menu_calls
+    local home_rebuilds
     local saved_modules
     local replaced_modules = {
         "gettext",
@@ -65,7 +67,9 @@ describe("file browser group views", function()
         legacy_tbr_calls = 0
         tbr_collection_changes = 0
         tbr_get_options = nil
+        status_get = nil
         select_menu_calls = 0
+        home_rebuilds = 0
 
         local plugin = {
             config = config,
@@ -87,7 +91,7 @@ describe("file browser group views", function()
             load = function() return groups.history or {} end,
             fileTime = function(index, path) return index[path] end,
         })
-        ZenSpec.replace("common/inline_icon_map", { filename = "filename" })
+        ZenSpec.replace("common/inline_icon_map", { filename = "filename", arrow_right = ">" })
         ZenSpec.replace("common/language_name", {
             get = function(language)
                 return language == "en" and "English" or language
@@ -101,6 +105,11 @@ describe("file browser group views", function()
                 return {}
             end,
             restore = function() return {} end,
+            get = function(_, key)
+                if key == "home" then
+                    return { rebuildActive = function() home_rebuilds = home_rebuilds + 1 end }
+                end
+            end,
         })
         ZenSpec.replace("modules/filebrowser/patches/standalone_page", {
             create_menu = function(spec)
@@ -134,6 +143,10 @@ describe("file browser group views", function()
             getAll = function(options)
                 tbr_get_options = options
                 return groups.tbr or {}
+            end,
+            getByStatuses = function(status_filter)
+                status_get = status_filter
+                return groups.status or {}
             end,
             collectionChanged = function() tbr_collection_changes = tbr_collection_changes + 1 end,
             collectionName = function() return "To Be Read" end,
@@ -234,6 +247,13 @@ describe("file browser group views", function()
         for _i, name in ipairs(replaced_modules) do
             package.loaded[name] = saved_modules[name] or nil
         end
+    end)
+
+    it("normalizes last-name sort keys", function()
+        install_group_view({})
+        local author_sort = require("common/author_sort")
+        assert.are.equal("Me", author_sort.key("Test Me (Test company)", "authors_last"))
+        assert.are.equal("Martinez", author_sort.key("Miguel Rodrigo Martinez&#x20;", "authors_last"))
     end)
 
     it("builds author, series, language, and tag pages from database groups", function()
@@ -415,6 +435,23 @@ describe("file browser group views", function()
         assert.are.equal(2, #shown)
     end)
 
+    it("opens a named status as a direct detail view", function()
+        install_group_view({ status = { "/done.epub" } })
+        metadata["/done.epub"] = { title = "Done", size = 10 }
+        local injected
+
+        api.showStatusView("complete", "Finished", function(menu, tab_id)
+            injected = { menu = menu, tab_id = tab_id }
+        end, "ct_finished")
+
+        local detail = assert(find_menu("status_detail"))
+        assert.same({ complete = true }, status_get)
+        assert.are.equal("Finished", detail.title)
+        assert.are.equal("/done.epub", detail.item_table[1].path)
+        assert.are.equal(detail, injected.menu)
+        assert.are.equal("ct_finished", injected.tab_id)
+    end)
+
     it("refreshes an open TBR page with the current shared order", function()
         install_group_view({ tbr = { "/a.epub" } })
         config.group_view.detail_collate = {
@@ -456,11 +493,13 @@ describe("file browser group views", function()
         end
     end)
 
-    it("persists reverse group sorting and rebuilds the open page", function()
+    it("persists author name and direction sorting and rebuilds the open page", function()
         install_group_view({
             authors = {
-                { author = "Alpha", files = { "/a.epub" } },
-                { author = "Zulu", files = { "/z.epub" } },
+                { author = "Octavia Butler", files = { "/o.epub" } },
+                { author = "Jane Austen", files = { "/j.epub" } },
+                { author = "Alice Klein", files = { "/a.epub" } },
+                { author = "Gabriel García Márquez", files = { "/g.epub" } },
             },
         })
         package.loaded.device.isTouchDevice = function() return true end
@@ -469,15 +508,73 @@ describe("file browser group views", function()
         menu:onZenGroupBlankHold()
         assert.is_function(file_dialog_args._zen_sort_cb)
         file_dialog_args._zen_sort_cb()
+        local author_dialog = dialogs[#dialogs]
+        assert.is_truthy(author_dialog.buttons[1][1].text:find("\u{F04BB}", 1, true))
+        assert.is_truthy(author_dialog.buttons[1][1].text:find("First name", 1, true))
+        assert.is_truthy(author_dialog.buttons[2][1].text:find("Last name", 1, true))
+        assert.are.equal(">", author_dialog.buttons[3][1].text:sub(-1))
+        author_dialog.buttons[2][1].callback()
+
+        assert.are.equal("authors_last", config.group_view.authors_collate)
+        assert.are.equal(1, home_rebuilds)
+        assert.are.same({ "Jane Austen", "Octavia Butler", "Alice Klein", "Gabriel García Márquez" }, {
+            menu.item_table[1].text,
+            menu.item_table[2].text,
+            menu.item_table[3].text,
+            menu.item_table[4].text,
+        })
+
+        menu:onZenGroupBlankHold()
+        file_dialog_args._zen_sort_cb()
+        author_dialog = dialogs[#dialogs]
+        author_dialog.buttons[3][1].callback()
         sort_dialog_args.on_select(true)
 
         assert.is_true(config.group_view.group_reverse.authors)
-        assert.are.equal(1, saved)
-        assert.are.same({ "Zulu", "Alpha" }, {
+        assert.are.equal(2, home_rebuilds)
+        assert.are.equal(2, saved)
+        assert.are.same({ "Gabriel García Márquez", "Alice Klein", "Octavia Butler", "Jane Austen" }, {
             menu.item_table[1].text,
             menu.item_table[2].text,
+            menu.item_table[3].text,
+            menu.item_table[4].text,
         })
-        assert.are.equal(2, menu.update_count)
+        assert.are.equal(3, menu.update_count)
+    end)
+
+    it("sorts series names without articles and persists natural title sorting", function()
+        install_group_view({
+            series = {
+                { series = "The Saga 10", items = { { file = "/ten.epub" } } },
+                { series = "Saga 2", items = { { file = "/two.epub" } } },
+                { series = "An Alpha", items = { { file = "/alpha.epub" } } },
+            },
+        })
+        package.loaded.device.isTouchDevice = function() return true end
+
+        api.showSeriesView()
+        local menu = assert(find_menu("series"))
+        assert.are.same({ "An Alpha", "The Saga 10", "Saga 2" }, {
+            menu.item_table[1].text,
+            menu.item_table[2].text,
+            menu.item_table[3].text,
+        })
+
+        menu:onZenGroupBlankHold()
+        file_dialog_args._zen_sort_cb()
+        local sort_dialog = dialogs[#dialogs]
+        assert.is_false(sort_dialog.buttons[1][1].enabled)
+        assert.is_truthy(sort_dialog.buttons[2][1].text:find("Title natural", 1, true))
+        sort_dialog.buttons[2][1].callback()
+
+        assert.are.equal("title_natural", config.group_view.group_collate.series)
+        assert.are.same({ "An Alpha", "Saga 2", "The Saga 10" }, {
+            menu.item_table[1].text,
+            menu.item_table[2].text,
+            menu.item_table[3].text,
+        })
+        assert.are.equal(1, saved)
+        assert.are.equal(1, home_rebuilds)
     end)
 
     it("opens series detail pages sorted by numeric series index", function()
@@ -598,6 +695,7 @@ describe("file browser group views", function()
         detail:onZenDetailBlankHold()
         file_dialog_args._zen_sort_cb()
         local sort_dialog = dialogs[#dialogs]
+        assert.are.equal(">", sort_dialog.buttons[6][1].text:sub(-1))
         sort_dialog.buttons[2][1].callback()
 
         assert.are.equal("title", config.group_view.detail_collate.series.Saga)
@@ -667,7 +765,7 @@ describe("file browser group views", function()
         end
     end)
 
-    it("persists tag-global collation and descending order from the page menu", function()
+    it("keeps the Tags page sort limited to tag names", function()
         install_group_view({
             tags = { { tag = "Classics", files = { "/book.epub" } } },
         })
@@ -678,18 +776,10 @@ describe("file browser group views", function()
         menu:onZenGroupBlankHold()
         file_dialog_args._zen_sort_cb()
         local sort_dialog = dialogs[#dialogs]
-        sort_dialog.buttons[5][1].callback()
-        assert.are.equal("access", config.group_view.tags_global.collate)
-
-        menu:onZenGroupBlankHold()
-        file_dialog_args._zen_sort_cb()
-        sort_dialog = dialogs[#dialogs]
-        sort_dialog.buttons[6][1].callback()
-        local order_dialog = dialogs[#dialogs]
-        order_dialog.buttons[2][1].callback()
-
-        assert.is_true(config.group_view.tags_global.reverse)
-        assert.are.equal(2, saved)
+        assert.are.equal(3, #sort_dialog.buttons)
+        assert.is_truthy(sort_dialog.buttons[1][1].text:find("Title", 1, true))
+        assert.is_truthy(sort_dialog.buttons[2][1].text:find("Title natural", 1, true))
+        assert.is_truthy(sort_dialog.buttons[3][1].text:find("Order", 1, true))
     end)
 
     it("restores root and detail pages after returning from the reader", function()

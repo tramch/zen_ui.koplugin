@@ -322,6 +322,18 @@ local function apply_automatic_series_grouping()
         if not file_chooser or not item_table then return end
         if file_chooser.show_current_dir_for_hold then return end
 
+        local status_filter = FileChooser.show_filter and FileChooser.show_filter.status
+        if status_filter then
+            local status_api = get_book_status()
+            for index = #item_table, 1, -1 do
+                local item = item_table[index]
+                if item.is_file and item.path
+                        and not status_filter[status_api.getDisplayStatusFromFile(item.path)] then
+                    table.remove(item_table, index)
+                end
+            end
+        end
+
         local current_dir_cache = {}
         local first_file_path
         for _i, item in ipairs(item_table) do

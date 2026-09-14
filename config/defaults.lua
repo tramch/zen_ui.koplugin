@@ -12,6 +12,7 @@ local defaults = {
         quickstart_shown_for_version = false,
         quickstart_completed = false,
         quickstart_menu_tour_pending = false,
+        quickstart_reader_tour_pending = false,
         reader_defaults_apply_on_next_open = false,
         sort_defaults_applied = false,
         bim_fbc_migrated = false,
@@ -30,6 +31,9 @@ local defaults = {
     },
     rakuyomi = {
         return_to_chapter_list_on_exit = false,
+    },
+    kindle = {
+        hide_library_folder = false,
     },
     custom_icons = {
         active_pack = "",
@@ -84,15 +88,24 @@ local defaults = {
         zen_opds             = true,
     },
     search = {
-        substring = true,
+        substring = not FontLanguage.supportsWholeWordSearch(),
+    },
+    metadata = {
+        hardcover_enabled = true,
+        google_books_enabled = true,
+        open_library_enabled = true,
+        hardcover_auto_match = true,
+        epub_backup = false,
     },
     developer = {
+        allow_modal_drag = false,
         double_tap_to_open_books = false,
     },
     navbar = {
         show_tabs = {
             books = true,
             folder = false,
+            kindle = false,
             manga = false,
             news = false,
             continue = true,
@@ -160,6 +173,7 @@ local defaults = {
             zenfm = false,
             filebrowser = false,
         },
+        background_hatching = false,
         show_labels = true,
         show_frontlight = true,
         show_warmth = true,
@@ -168,6 +182,7 @@ local defaults = {
         gyro_icon = "quick_rotate",
         rotate_action = "90",
         screenshot_timer_seconds = 3,
+        tailscale_toggle_wifi = false,
     },
     status_bar = {
         custom_text = " ",
@@ -238,6 +253,28 @@ local defaults = {
         font_face = library_font_default,
         font_size = 18,
     },
+    book_details = {
+        text_styles = {
+            description = { font_face = "default" },
+        },
+        order = {
+            "authors", "series", "tags", "language", "rating", "annotations",
+            "note", "pages", "progress", "read_time", "time_remaining",
+        },
+        authors = true,
+        series = true,
+        tags = true,
+        navigate_to_tag = false,
+        language = true,
+        rating = true,
+        annotations = true,
+        note = true,
+        pages = true,
+        progress = true,
+        read_time = false,
+        time_remaining = false,
+        description = true,
+    },
     zen_scroll_bar = {
         style              = "page_number",  -- "bar" | "dots" | "page_number"
         page_number_format = "total",  -- "current" | "total"
@@ -257,6 +294,9 @@ local defaults = {
         custom_text      = "",
         show_bottom_border = false,
         bottom_border_progress = false,
+        show_chapter_marks = false,
+        colored = false,
+        wifi_hide_when_off = false,
         hide_in_cbz = true,
     },
     reader_themes = {
@@ -309,6 +349,12 @@ local defaults = {
     },
     group_view = {
         include_new_in_tbr = false,
+        authors_collate = "authors",
+        group_collate = {
+            series = "title",
+            languages = "title",
+            tags = "title",
+        },
         display_mode = {
             authors = "list_image_meta",
             series = "list_image_meta",
@@ -326,6 +372,7 @@ local defaults = {
             authors = false,
             series = false,
             languages = false,
+            tags = false,
         },
         tags_global = {
             collate = "title",

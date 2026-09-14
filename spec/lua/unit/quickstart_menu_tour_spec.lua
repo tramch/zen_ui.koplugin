@@ -72,6 +72,9 @@ describe("Quickstart menu tour", function()
         local quicksettings_tab_dimen = { x = 500, y = 10, w = 48, h = 48 }
 
         touch_menu = {
+            updateItems = function(self, page)
+                self.updated_page = page
+            end,
             _zen_panel_refs = {
                 buttons = {
                     { id = "sleep", widget = { dimen = other_button_dimen } },
@@ -179,6 +182,7 @@ describe("Quickstart menu tour", function()
 
         assert.is_false(plugin.config._meta.quickstart_menu_tour_pending)
         assert.are.equal(1, plugin.save_calls)
+        assert.are.equal(1, touch_menu.updated_page)
 
         local scheduled_before = #scheduled
         local shown_before = #shown
@@ -189,6 +193,22 @@ describe("Quickstart menu tour", function()
         assert.are.equal(shown_before, #shown)
         assert.are.equal(menu_shows_before, menu.show_calls)
         assert.are.equal(1, plugin.save_calls)
+    end)
+
+    it("starts the reader tour after the menu tour when a book is open", function()
+        local reader_tour_starts = 0
+        menu._zen_start_reader_tour = function()
+            reader_tour_starts = reader_tour_starts + 1
+        end
+        plugin.config._meta.quickstart_reader_tour_pending = true
+        zen_dimen.x, zen_dimen.y = 94, 90
+        zen_settings_dimen.x, zen_settings_dimen.y = 418, 10
+
+        require("common/quickstart/menu_tour").start(plugin)
+        run_until_shown()
+        shown[1].on_complete()
+
+        assert.are.equal(1, reader_tour_starts)
     end)
 
     it("reuses an already-open menu instead of stacking another container", function()
