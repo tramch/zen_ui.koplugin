@@ -14,6 +14,7 @@ describe("bug reporter labels", function()
         "common/utils",
         "common/zen_logger",
         "datastorage",
+        "dbg",
         "gettext",
         "ltn12",
         "modules/settings/zen_bugreporter",
@@ -138,11 +139,18 @@ describe("bug reporter labels", function()
     end)
 
     it("enables both KOReader debug flags before restarting", function()
+        local debug_calls = {}
         local flushed = false
         local restarted = false
         local settings = ZenSpec.memorySettings()
         settings.flush = function() flushed = true end
         _G.G_reader_settings = settings
+        ZenSpec.replace("dbg", {
+            turnOn = function() debug_calls[#debug_calls + 1] = "on" end,
+            setVerbose = function(_self, enabled)
+                debug_calls[#debug_calls + 1] = enabled and "verbose" or "quiet"
+            end,
+        })
         package.loaded["common/restart"].request = function() restarted = true end
 
         require("modules/settings/zen_bugreporter").show_dialog({})
@@ -150,6 +158,7 @@ describe("bug reporter labels", function()
 
         assert.is_true(settings:isTrue("debug"))
         assert.is_true(settings:isTrue("debug_verbose"))
+        assert.same({ "on", "verbose" }, debug_calls)
         assert.is_true(flushed)
         assert.is_true(restarted)
     end)

@@ -155,8 +155,11 @@ function M.show_dialog(ctx)
             ok_text     = _("Restart now"),
             cancel_text = _("Cancel"),
             ok_callback = function()
+                local dbg = require("dbg")
                 G_reader_settings:saveSetting("debug", true)
                 G_reader_settings:saveSetting("debug_verbose", true)
+                dbg:turnOn()
+                dbg:setVerbose(true)
                 G_reader_settings:flush()
                 restart.request()
             end,
