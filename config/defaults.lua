@@ -98,6 +98,7 @@ local defaults = {
         epub_backup = false,
     },
     developer = {
+        allow_modal_drag = false,
         double_tap_to_open_books = false,
     },
     navbar = {

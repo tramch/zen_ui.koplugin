@@ -5,6 +5,9 @@ local function apply_disable_modal_drag()
         all onMovable* methods at the class level (for direct-call widgets).
     ]]
     local MovableContainer = require("ui/widget/container/movablecontainer")
+    local plugin = rawget(_G, "__ZEN_UI_PLUGIN")
+    local developer = plugin and plugin.config and plugin.config.developer
+    if type(developer) == "table" and developer.allow_modal_drag == true then return end
 
     if MovableContainer._zen_no_drag_patched then return end
     MovableContainer._zen_no_drag_patched = true

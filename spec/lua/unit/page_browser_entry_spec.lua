@@ -851,6 +851,28 @@ describe("page browser entry", function()
         expect(ReaderSearch.current_search_type == default_search_type)
     end)
 
+    it("leaves KOReader reader search untouched when Zen Search is disabled", function()
+        local stock_show = function() return "stock" end
+        local stock_search = function() return "search" end
+        local stock_results = function() return "results" end
+        local ReaderSearch = {
+            onShowFulltextSearchInput = stock_show,
+            search = stock_search,
+            onShowFindAllResults = stock_results,
+        }
+        ZenSpec.replace("apps/reader/modules/readersearch", ReaderSearch)
+        ZenSpec.replace("apps/reader/modules/readermenu", { initGesListener = function() end })
+        ZenSpec.replace("apps/reader/modules/readerconfig", { onSwipeShowConfigMenu = function() end })
+        _G.__ZEN_UI_PLUGIN = {
+            config = { features = { page_browser = false, search = false } },
+        }
+
+        require("modules/reader/patches/page_browser")()
+        expect(ReaderSearch.onShowFulltextSearchInput == stock_show)
+        expect(ReaderSearch.search == stock_search)
+        expect(ReaderSearch.onShowFindAllResults == stock_results)
+    end)
+
     it("uses native whole-word boundaries for fixed-layout document searches", function()
         local search_call = {}
         local find_all_call = {}

@@ -6287,3 +6287,27 @@ msgstr "ZenPM"
 #: zenpm_installer.lua:381
 msgid "ZenPM has been installed. Restart KOReader to use it."
 msgstr "O ZenPM foi instalado. Reinicie o KOReader para usá-lo."
+
+#. Type: setting
+#. Context: table.insert(items, { text = _("Allow dragging reader modals"), help_text = _("Restore KOReader's default draggable modal behavior."),
+#: advanced_settings.lua:65
+msgid "Allow dragging reader modals"
+msgstr "Permitir arrastar janelas do leitor"
+
+#. Type: setting
+#. Context: { text = _("Enable Zen Search"), help_text = _("Use Zen Search in the file browser and reader. Disable to use KOReader's default search."),
+#: global_settings.lua:384
+msgid "Enable Zen Search"
+msgstr "Ativar Zen Search"
+
+#. Type: message
+#. Context: text = _("Allow dragging reader modals"), help_text = _("Restore KOReader\'s default draggable modal behavior."), checked_func = function()
+#: advanced_settings.lua:66
+msgid "Restore KOReader's default draggable modal behavior."
+msgstr "Restaura o comportamento padrão do KOReader para janelas arrastáveis."
+
+#. Type: message
+#. Context: text = _("Enable Zen Search"), help_text = _("Use Zen Search in the file browser and reader. Disable to use KOReader's default search."), checked_func = function()
+#: global_settings.lua:385
+msgid "Use Zen Search in the file browser and reader. Disable to use KOReader's default search."
+msgstr "Use o Zen Search no navegador de arquivos e no leitor. Desative para usar a pesquisa padrão do KOReader."

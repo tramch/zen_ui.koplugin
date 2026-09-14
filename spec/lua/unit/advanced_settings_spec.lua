@@ -61,6 +61,28 @@ describe("Advanced settings", function()
         assert.are.equal(1, saved)
     end)
 
+    it("enables modal dragging only after an explicit toggle", function()
+        local saved, restart_prompts = 0, 0
+        local config = { features = {}, developer = {} }
+        local items = require("modules/settings/sections/advanced_settings").build({
+            config = config,
+            plugin = { saveConfig = function() saved = saved + 1 end },
+            settings_apply = {
+                prompt_restart = function() restart_prompts = restart_prompts + 1 end,
+            },
+        })
+        local drag_item
+        for _i, item in ipairs(items) do
+            if item.text == "Allow dragging reader modals" then drag_item = item end
+        end
+
+        assert.is_false(drag_item.checked_func())
+        drag_item.callback()
+        assert.is_true(drag_item.checked_func())
+        assert.are.equal(1, saved)
+        assert.are.equal(1, restart_prompts)
+    end)
+
     it("applies verbose debug logging immediately", function()
         local calls = {}
         G_reader_settings.makeTrue = function(self, key) self:saveSetting(key, true) end

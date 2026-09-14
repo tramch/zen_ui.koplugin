@@ -2712,7 +2712,10 @@ local function apply_page_browser()
     -- ZenOS customisations for fulltext search dialog
     -- -----------------------------------------------------------------------
     local ok_rs, ReaderSearch = pcall(require, "apps/reader/modules/readersearch")
-    if ok_rs and ReaderSearch then
+    local search_features = _plugin_ref and _plugin_ref.config
+        and _plugin_ref.config.features
+    if ok_rs and ReaderSearch
+            and (type(search_features) ~= "table" or search_features.search ~= false) then
         local InputDialog = require("ui/widget/inputdialog")
         local Screen_s    = require("device").screen
         local BD          = require("ui/bidi")

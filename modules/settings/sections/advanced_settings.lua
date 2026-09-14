@@ -62,6 +62,21 @@ function M.build(ctx)
     })
 
     table.insert(items, {
+        text = _("Allow dragging reader modals"),
+        help_text = _("Restore KOReader's default draggable modal behavior."),
+        checked_func = function()
+            return type(config.developer) == "table"
+                and config.developer.allow_modal_drag == true
+        end,
+        callback = function()
+            if type(config.developer) ~= "table" then config.developer = {} end
+            config.developer.allow_modal_drag = config.developer.allow_modal_drag ~= true
+            plugin:saveConfig()
+            settings_apply.prompt_restart()
+        end,
+    })
+
+    table.insert(items, {
         text = _("Show hidden files"),
         checked_func = function()
             return type(config.developer) == "table"

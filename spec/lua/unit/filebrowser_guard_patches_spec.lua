@@ -506,6 +506,24 @@ describe("file browser guard patches", function()
         assert.is_nil(MovableContainer.onMovablePanRelease(instance))
     end)
 
+    it("leaves KOReader modal dragging untouched when allowed", function()
+        local stock_init = function() return "initialized" end
+        local stock_touch = function() return "touch" end
+        local MovableContainer = {
+            init = stock_init,
+            onMovableTouch = stock_touch,
+        }
+        ZenSpec.replace("ui/widget/container/movablecontainer", MovableContainer)
+        _G.__ZEN_UI_PLUGIN = {
+            config = { developer = { allow_modal_drag = true } },
+        }
+
+        apply_patch("modules/filebrowser/patches/disable_modal_drag")
+        assert.is_true(MovableContainer.init == stock_init)
+        assert.is_true(MovableContainer.onMovableTouch == stock_touch)
+        assert.is_nil(MovableContainer._zen_no_drag_patched)
+    end)
+
     it("hides separators in non-classic menus and CoverBrowser layouts", function()
         local registered, shared
         local menu_updates, cover_updates = 0, 0
