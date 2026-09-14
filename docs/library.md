@@ -107,6 +107,22 @@ Open **Edit > Edit metadata** from a book's context menu, or choose **Edit** on 
 
 **Find metadata** searches every enabled provider and can use the book's ISBN or a title and author query. Hardcover and Google Books require credentials; enter them under **Zen Settings > Library > Metadata**. They are stored locally as plain text and never logged. Open Library requires no credential. Search results show available editions with their format, publisher, language, page count, and cover so you can choose the correct match.
 
+### Metadata provider credentials
+
+The easiest setup is through **Zen Settings > Library > Metadata**:
+
+1. **Hardcover:** Sign in to [Hardcover's API page](https://hardcover.app/account/api), create a personal access token with only the `read:catalog` permission, and copy the token value. Open **Hardcover > Hardcover API token** in ZenOS and paste it without a leading `Bearer ` prefix. The same Hardcover submenu can display this page as a QR code.
+2. **Google Books:** In Google Cloud, select or create a project, [enable the Books API](https://console.cloud.google.com/apis/library/books.googleapis.com), then open [Credentials](https://console.cloud.google.com/apis/credentials) and choose **Create credentials > API key**. Restrict the key to the **Books API**, copy it, and paste it under **Google Books > Google Books API key**. See [Google's API-key instructions](https://developers.google.com/books/docs/v1/using#acquiring_and_using_an_api_key) for more detail.
+
+To install the credentials manually instead, put each raw value on one line in the following file:
+
+| Credential | File |
+| --- | --- |
+| Hardcover token | `koreader/settings/ZenOS/hardcover_token.txt` |
+| Google Books API key | `koreader/settings/ZenOS/google_books_api_key.txt` |
+
+Use the exact filenames above. Do not add a variable name, quotes, or `Bearer `; these files contain only the credential. Keep them private and out of shared backups.
+
 For EPUB files, ZenOS writes supported metadata into the book after confirmation. Enable **Keep an EPUB metadata backup** if you want a **Restore** action; the editor keeps one backup beside the EPUB. Other formats, including PDF, keep the original document unchanged and save KOReader metadata overrides in the book's sidecar data. Cover changes use KOReader's custom-cover file.
 
 ## Custom folder covers

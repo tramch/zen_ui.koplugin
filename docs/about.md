@@ -33,7 +33,7 @@ The About section groups project and device information, language and time setti
 | Device > IP address | Shows the device's current network address, or a dash when unavailable. |
 | About > Language | Selects the KOReader and ZenOS interface language. |
 | About > Time | Opens KOReader's date and time settings. |
-| About > Setup Guide | Opens the built-in ZenOS quickstart. When it closes, a short coachmark tour points out Zen Mode and Zen Settings in the top menu. The guide is shown on first launch and remains available here. |
+| About > Setup Guide | Opens the built-in ZenOS quickstart. When it closes, short coachmark tours introduce Zen Mode and Zen Settings in the top menu, then the Reader page browser after a book is opened. The guide is shown on first launch and remains available here. |
 | About > Report a Bug | Opens the ZenOS bug reporting dialog. |
 | About > Advanced | Opens metadata extraction, refresh behavior, logs, gestures, and plugin tools. |
 | About > Quit KOReader | Opens a confirmation dialog and exits KOReader. |

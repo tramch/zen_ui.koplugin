@@ -33,16 +33,16 @@ ZenOS is built to be lightweight and efficient. Its dedicated renderer and intel
 Build a personal Home page for your e-reader with responsive widgets: date and time, featured book, reading stats, reading goals, book strip, and quotes. Arrange them within the screen's space budget, edit widgets directly from Home, or apply and save presets.
 
 The Quotes widget can combine built-in quotes, annotations, and any selection
-of custom quote files stored in `settings/ZenOS/quotes/`, while the existing
-`settings/ZenOS/quotes.lua` remains the primary custom file.
+of custom quote files stored in `koreader/settings/ZenOS/quotes/`, while the existing
+`koreader/settings/ZenOS/quotes.lua` remains the primary custom file.
 
-The unified book strip can switch between recent books, favorites, To Be Read, authors, series, tags, collections, a folder, or a custom list. Optional strip controls can also launch actions, Controls, plugin menus, and KOReader menus. Featured books support recent, To Be Read, or a hand-picked title, with configurable metadata and progress labels.
+The unified book strip can switch between recent books, favorites, To Be Read, authors, series, languages, tags, collections, Kindle Library when available, a folder, or a custom list. Optional strip controls can also filter by book status or launch actions, Controls, plugin menus, and KOReader menus. Featured books support recent, To Be Read, or a hand-picked title, with configurable metadata and progress labels.
 
 See the [Home guide](docs/home.md).
 
 ### Controls
 
-Swipe down from anywhere for up to nine configurable controls plus brightness and warmth sliders. Buttons can toggle device features, run dispatcher actions, open plugins or KOReader menus, and expose installed integrations such as Bluetooth, Tailscale, and ZenFM. Hold the minus button on a lighting slider to jump to zero.
+Swipe down from anywhere for up to nine configurable controls plus brightness and warmth sliders. Buttons can toggle device features, run dispatcher actions, open plugins or KOReader menus, and expose installed integrations such as Bluetooth, Tailscale, and ZenFM. Tailscale can toggle Wi-Fi with itself, and optional hatching fills the area below the top menu. Hold the minus button on a lighting slider to jump to zero.
 
 <img src="./images/quickstart/onboarding/quicksettings.png" width="500" alt="Quick Settings">
 
@@ -62,7 +62,7 @@ See the [Library guide](docs/library.md).
 
 ### Navbar
 
-Keep up to seven tabs at the bottom of the Library. Built-in destinations include Library, a chosen Folder, Home, Continue, Favorites, Collections, Authors, Series, Languages, Tags, To Be Read, Stats, Manga, and News. Custom tabs can run a Control or dispatcher action, open a plugin or KOReader menu, and use a custom label and icon. Choose any supported tab as the default destination.
+Keep up to seven tabs at the bottom of the Library. Built-in destinations include Library, Kindle Library when available, a chosen Folder, Home, Continue, Favorites, Collections, Authors, Series, Languages, Tags, book statuses, Stats, Manga, and News. Custom tabs can run a Control or dispatcher action, open a plugin or KOReader menu, and use a custom label and icon. Choose any supported tab as the default destination.
 
 
 <img src="./images/quickstart/onboarding/navbar.png" width="500" alt="Navigation Bar">
@@ -102,7 +102,7 @@ Night mode, brightness, and warmth each have independent schedules. Brightness a
 
 ### Integrations and Customization
 
-ZenOS themes the OPDS browser, integrates with Rakuyomi, can install ZenPM on supported non-Android ARM devices, and adds a ZenFM Control when the plugin is present. Custom icon packs can replace ZenOS and KOReader artwork. Plugins can also contribute Home widgets and status-bar items through public integration APIs.
+ZenOS themes the OPDS browser, integrates with Rakuyomi and [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin), can install ZenPM on supported non-Android ARM devices, and adds a ZenFM Control when the plugin is present. Custom icon packs can replace ZenOS and KOReader artwork. Plugins can also contribute Home widgets and status-bar items through public integration APIs.
 
 See the [Extras](docs/extras.md), [Custom Icon Packs](docs/icon-packs.md), and [Actions](docs/actions.md) guides.
 
@@ -110,7 +110,7 @@ See the [Extras](docs/extras.md), [Custom Icon Packs](docs/icon-packs.md), and [
 
 Zen Settings brings ZenOS and frequently used KOReader settings into one searchable, key-friendly interface. Sections are organized as Controls, Launcher, Home, Library, Navbar, Reader, Extras, and About. It remembers your previous location, most features remain independently configurable, and ZenOS can update itself without leaving KOReader.
 
-New installations include a visual setup guide followed by a short on-screen tour of Zen Mode and Zen Settings. The guide remains available from **Zen Settings > About > Setup Guide**.
+New installations include a visual setup guide followed by short on-screen tours of Zen Mode, Zen Settings, and the Reader page browser. The guide remains available from **Zen Settings > About > Setup Guide**.
 
 <img src="./images/quickstart/onboarding/zen_ui_settings.png" width="500" alt="ZenOS Settings">
 
@@ -162,8 +162,8 @@ The migration performs two automatic restarts. If Zen UI is disabled, enable
 it once so its migration can run. Do not manually install `zenos.koplugin`
 beside an existing `zen_ui.koplugin` directory.
 
-The upgrade keeps `settings/Zen UI` as an unchanged rollback snapshot and
-migrates a separate copy in `settings/ZenOS`. Downgrading to an older Zen UI
+The upgrade keeps `koreader/settings/Zen UI` as an unchanged rollback snapshot and
+migrates a separate copy in `koreader/settings/ZenOS`. Downgrading to an older Zen UI
 build therefore restores the settings as they were immediately before the
 ZenOS upgrade; changes made later in ZenOS are intentionally not copied back.
 

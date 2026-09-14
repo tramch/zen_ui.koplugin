@@ -26,8 +26,8 @@ Build a personal Home page from date and time, featured book, reading stats, rea
 - Show or hide the home page top status bar.
 - Configure automatic or manual font sizing for date/time, stats, and quotes.
 - Set Featured content to Recently read, To Be Read, or one custom book.
-- Set Strip content to a library source, specific tag, folder, or up to 40 custom books.
-- Add up to seven Strip control tabs for library sources, tags, folders, actions, Controls, plugin menus, or KOReader menus.
+- Set Strip content to a library source, including Kindle Library when its plugin is installed, a specific tag, folder, or up to 40 custom books.
+- Add up to seven Strip control tabs for library sources and book statuses, tags, folders, actions, Controls, plugin menus, or KOReader menus.
 - Configure text styles, progress labels, interactivity, filters, and widget-specific display options.
 - Track daily, weekly, monthly, and yearly reading goals using pages, time, or supported book-count targets.
 - Use stable page labels in featured-widget progress when a book provides a page map.
@@ -52,9 +52,9 @@ Build a personal Home page from date and time, featured book, reading stats, rea
 | Widgets > Featured book > Top status bar | Shows the featured widget status bar and configures its bottom border and bold text. |
 | Widgets > Featured book > Text styles | Sets title, author, series, and description font face, size, and bold style. |
 | Widgets > Featured book > Progress labels | Selects left and right progress labels: off, percent, time to book end, current/total pages, or total pages. Current/total and total pages use stable page labels when the book provides a page map. |
-| Widgets > Book strip > Content | Selects Recent, Favorites, To Be Read, Authors, Series, Tags, Collections, a specific tag, a folder, or custom books when Strip controls are hidden. |
-| Widgets > Book strip > Controls | Adds source and action tabs above the strip. The first visible source tab becomes the active content source. |
-| Widgets > Book strip > Controls > Tabs | Shows and arranges up to seven tabs. Add a built-in source, specific tag, folder, dispatcher action, Control, plugin menu, or KOReader menu. |
+| Widgets > Book strip > Content | Selects Recent, Favorites, To Be Read, Authors, Series, Languages, Tags, Collections, Kindle Library when available, a specific tag, a folder, or custom books when Strip controls are hidden. |
+| Widgets > Book strip > Controls | Adds source and action tabs above the strip, including Unread, Reading, On hold, and Finished status sources. The first visible source tab becomes the active content source. |
+| Widgets > Book strip > Controls > Tabs | Shows and arranges up to seven tabs. Add a built-in or book-status source, specific tag, folder, dispatcher action, Control, plugin menu, or KOReader menu. |
 | Widgets > Book strip > Controls > Font | Sets the strip-control label font, size, and weight. |
 | Widgets > Book strip > Show book titles | Shows titles below strip covers. |
 | Widgets > Book strip > Show badges | Shows cover badges in the strip. |
@@ -85,8 +85,8 @@ Home featured widgets use KOReader page-map data when it is available. That mean
 
 ## Custom quotes
 
-Add personal quotes to `settings/ZenOS/quotes.lua`. Put additional `.lua` quote
-files in `settings/ZenOS/quotes/`; ZenOS creates this folder automatically and
+Add personal quotes to `koreader/settings/ZenOS/quotes.lua`. Put additional `.lua` quote
+files in `koreader/settings/ZenOS/quotes/`; ZenOS creates this folder automatically and
 does not scan other settings files. Under **Zen Settings > Home > Widgets >
 Quotes > Quote sources > Custom quotes**, turn on each file you want to use.
 Selected files are combined and can still be mixed with the default list and
@@ -95,7 +95,7 @@ be a `{ text, author, title }` table, the older `{ text, author }` form, or a
 plain string without attribution.
 
 ```text
-settings/ZenOS/
+koreader/settings/ZenOS/
 ├── quotes.lua
 └── quotes/
     ├── philosophy.lua

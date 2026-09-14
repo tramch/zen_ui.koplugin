@@ -109,6 +109,8 @@ Tap + hold and drag to highlight a selection of text and open the Zen highlight 
 
 ZenOS uses KOReader page-map labels when a book provides them. The reader page browser shows stable labels on page tiles and during page scrubbing, and the Zen table of contents shows the same labels beside chapter entries. It also handles non-linear book content without breaking page navigation. The page browser's Info button opens Book details, and Home featured widgets use the same page data for current/total progress.
 
+After first-run setup, a one-time Reader tour demonstrates the swipe-up page browser, Reader menu, bookmarks, table of contents, and page-browser layouts. Run **Zen Settings > About > Setup Guide** to queue the tour again.
+
 ## Status bars
 
 The reader has two independent status bars: a top bar and a bottom bar. Each bar has three slots — left, center, and right — that you customize separately. Drop items like time, battery, Incognito, Wi-Fi, brightness, RAM usage, disk space, custom text, book title, author, chapter, progress percentage, or current/total pages into any slot and arrange their order. The top and bottom bars are configured independently, so you can show different items in each.

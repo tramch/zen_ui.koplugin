@@ -27,6 +27,7 @@ The `en.po` file is the source catalog. All other locales are translated from it
 | `bg` | Bulgarian |
 | `cs` | Czech |
 | `hu` | Hungarian |
+| `id` | Indonesian |
 | `pt_BR` | Brazilian Portuguese |
 | `pt_PT` | European Portuguese |
 | `ro` | Romanian |

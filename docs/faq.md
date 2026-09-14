@@ -6,7 +6,7 @@ settingsPath: ''
 order: 6
 ---
 
-<!-- Documentation current through ZenOS v3.0.0. -->
+<!-- Documentation current through ZenOS v3.3.0. -->
 
 ## How do I install ZenOS?
 
@@ -26,7 +26,11 @@ Swipe up while in a book, then tap the **Aa** icon.
 
 ## No books found
 
-Set the Home folder to the location where your books are, preferably a dedicated folder such as `/books`, under **Zen Settings > Library > Home folder > Set home folder**. Books must use a KOReader-supported, DRM-free format. KOReader can only read open format books and cannot read proprietary formats such `azw3`, `kfx`, `mobi` etc. You will need to convert your books to an open format to use KOReader
+Set the Home folder to the location where your books are, preferably a dedicated folder such as `/books`, under **Zen Settings > Library > Home folder > Set home folder**. Sideloaded books must use a KOReader-supported, DRM-free format. On Kindle devices, install [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin) to browse and prepare books from the device's native Kindle library through ZenOS.
+
+## How do I open my native Kindle library?
+
+Install [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin) on a Kindle device and restart KOReader. **Kindle Library** then becomes available as a Navbar tab and Home Book strip source. The plugin prepares a book on its first open and caches it for later use.
 
 ## Calibre loads all my books into folders of the authors, how can I fix that?
 

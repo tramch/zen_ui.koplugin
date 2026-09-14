@@ -6,7 +6,7 @@ settingsPath: Zen Settings > Updates
 order: 79
 ---
 
-<!-- Documentation current through ZenOS v3.0.0. -->
+<!-- Documentation current through ZenOS v3.3.0. -->
 
 ## Overview
 

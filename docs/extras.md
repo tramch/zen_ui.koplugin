@@ -14,7 +14,7 @@ Extras collects optional additions that fall outside of the Library/Reader. It i
 
 ## ZenPM
 
-On supported non-Android ARM32 and ARM64 devices, choose **Zen Settings > Extras > Install ZenPM** to install the Zen plugin manager directly from ZenOS.
+On supported non-Android ARM32 and ARM64 devices, choose **Zen Settings > Extras > Install ZenPM** to install the Zen plugin manager directly from ZenOS. ZenPM uses the ZenOS status bar while browsing packages.
 
 ## Stats
 
