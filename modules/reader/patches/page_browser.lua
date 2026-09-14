@@ -2715,6 +2715,7 @@ local function apply_page_browser()
     if ok_rs and ReaderSearch then
         local InputDialog = require("ui/widget/inputdialog")
         local Screen_s    = require("device").screen
+        local BD          = require("ui/bidi")
         local ZenModalClose = require("common/ui/zen_modal_close")
         local _           = require("gettext")
         local logger_rs   = require("common/zen_logger").new("page_browser")
@@ -2744,6 +2745,11 @@ local function apply_page_browser()
         end
 
         ReaderSearch.onShowFulltextSearchInput = function(self, search_string)
+            local backward_text, forward_text = "◀", "▶"
+            if BD.mirroredUILayout() then
+                backward_text, forward_text = forward_text, backward_text
+            end
+            local arrow_width = Screen_s:scaleBySize(56)
             self.input_dialog = InputDialog:new{
                 title = _("Search Book"),
                 width = math.floor(math.min(Screen_s:getWidth(), Screen_s:getHeight()) * 0.9),
@@ -2754,10 +2760,24 @@ local function apply_page_browser()
                 buttons = {
                     {
                         {
+                            text = backward_text,
+                            width = arrow_width,
+                            callback = function()
+                                self:searchCallback(1)
+                            end,
+                        },
+                        {
                             text             = SEARCH_ICON .. " " .. _("Search"),
                             is_enter_default = true,
                             callback         = function()
                                 self:searchCallback()
+                            end,
+                        },
+                        {
+                            text = forward_text,
+                            width = arrow_width,
+                            callback = function()
+                                self:searchCallback(0)
                             end,
                         },
                     },

@@ -1152,8 +1152,13 @@ describe("page browser entry", function()
         expect(closes == 6)
     end)
 
-    it("closes book search with hardware Back and focuses its X on non-touch devices", function()
-        local ReaderSearch = {}
+    it("adds book-search navigation arrows and supports hardware Back", function()
+        local search_directions = {}
+        local ReaderSearch = {
+            searchCallback = function(_, direction)
+                table.insert(search_directions, direction)
+            end,
+        }
         local close_button = { name = "close" }
         local input_widget = {
             name = "input",
@@ -1181,6 +1186,7 @@ describe("page browser entry", function()
             screen = {
                 getWidth = function() return 600 end,
                 getHeight = function() return 800 end,
+                scaleBySize = function(_, value) return value end,
             },
             isTouchDevice = function() return false end,
         })
@@ -1218,6 +1224,14 @@ describe("page browser entry", function()
         expect(shown_dialog == dialog)
         expect(dialog.title_bar.left_button == nil)
         expect(dialog.title_bar.right_button == close_button)
+        local buttons = dialog.buttons[1]
+        expect(#buttons == 3)
+        expect(buttons[1].text == "◀" and buttons[1].width == 56)
+        expect(buttons[2].is_enter_default == true)
+        expect(buttons[3].text == "▶" and buttons[3].width == 56)
+        buttons[1].callback()
+        buttons[3].callback()
+        expect(search_directions[1] == 1 and search_directions[2] == 0)
         expect(dialog.layout[1][1] == close_button)
         expect(dialog.layout[2][1] == input_widget)
         expect(dialog.selected.x == 1 and dialog.selected.y == 2)
