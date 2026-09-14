@@ -6,6 +6,7 @@ describe("automatic series grouping patch", function()
     local cached_rows
     local doc_props_lookups
     local original_refresh_calls
+    local statuses
 
     local function item(path, title, access)
         return {
@@ -36,6 +37,7 @@ describe("automatic series grouping patch", function()
         cached_rows = {}
         doc_props_lookups = 0
         original_refresh_calls = 0
+        statuses = {}
         G_reader_settings = ZenSpec.memorySettings({
             reverse_collate = false,
             collate_mixed = false,
@@ -124,6 +126,9 @@ describe("automatic series grouping patch", function()
                 doc_props_lookups = doc_props_lookups + 1
                 return metadata[path]
             end,
+        })
+        ZenSpec.replace("common/book_status", {
+            getDisplayStatusFromFile = function(path) return statuses[path] or "new" end,
         })
         ZenSpec.replace("apps/filemanager/filemanager", {
             instance = { _updateStatusBar = function(self) self.updated = true end },
@@ -282,6 +287,23 @@ describe("automatic series grouping patch", function()
         FileChooser.switchItemTable(fc, nil, { first, second })
 
         assert.are.same({ first, second }, fc.item_table)
+    end)
+
+    it("hides a series group when none of its books match the status filter", function()
+        local first = item("/library/One.epub", "One")
+        local second = item("/library/Two.epub", "Two")
+        local reading = item("/library/Reading.epub", "Reading")
+        metadata[first.path] = { series = "Finished", series_index = 1 }
+        metadata[second.path] = { series = "Finished", series_index = 2 }
+        statuses[first.path] = "complete"
+        statuses[second.path] = "complete"
+        statuses[reading.path] = "reading"
+        FileChooser.show_filter = { status = { reading = true } }
+        local fc = chooser()
+
+        FileChooser.switchItemTable(fc, nil, { first, second, reading })
+
+        assert.are.same({ reading }, fc.item_table)
     end)
 
     it("hides multi-book grouped series while retaining loose and single-series books", function()

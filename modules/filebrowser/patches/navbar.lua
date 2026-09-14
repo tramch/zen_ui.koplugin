@@ -3353,6 +3353,12 @@ local function apply_navbar()
         -- menu_top_swipe (class-level patch on Menu.onSwipe).
     end
 
+    local orig_fm_onClose = FileManager.onClose
+    function FileManager:onClose(...)
+        utils.closeWidgetsAbove(self)
+        return orig_fm_onClose(self, ...)
+    end
+
     -- Save current library view state just before the reader takes over.
     -- The FM is about to be destroyed; we persist {tab, page} so that when
     -- showFileManager() recreates it we can scroll back to the right place.

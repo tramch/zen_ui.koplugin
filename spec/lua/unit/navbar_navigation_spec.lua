@@ -99,6 +99,7 @@ describe("file browser navbar navigation", function()
             },
         }
         FileManager = class({
+            onClose = function() calls[#calls + 1] = "close_filemanager" end,
             setupLayout = function(self)
                 setup_observation = {
                     hidden = rawget(_G, "__ZEN_UI_HIDDEN_HOME_BOOTSTRAP"),
@@ -2123,6 +2124,21 @@ describe("file browser navbar navigation", function()
             "previous", "next", "menu",
         }, calls)
         assert.are.equal("Collections", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+    end)
+
+    it("closes History above FileManager before exiting", function()
+        local fm = make_instance()
+        local history = { name = "history" }
+        UIManager._window_stack = { { widget = fm }, { widget = history } }
+        package.loaded["common/utils"].closeWidgetsAbove = function(anchor)
+            assert.are.equal(fm, anchor)
+            calls[#calls + 1] = "close_history"
+        end
+        calls = {}
+
+        FileManager.onClose(fm)
+
+        assert.are.same({ "close_history", "close_filemanager" }, calls)
     end)
 
     it("returns an open collection to the collections root on an active-tab tap", function()
