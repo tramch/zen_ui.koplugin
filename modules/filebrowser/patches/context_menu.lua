@@ -1756,8 +1756,13 @@ local function apply_context_menu()
             if context_menu_config and context_menu_config.show_plugin_actions == true
                     and not is_virtual_folder and type(added_plugin_buttons) == "table" then
                 local rows = {}
+                local hidden_index = added_plugin_buttons.index
+                    and added_plugin_buttons.index.coverbrowser_2
                 for _i = 1, #added_plugin_buttons do
-                    local ok, row = pcall(added_plugin_buttons[_i], file, is_file, book_props)
+                    local ok, row
+                    if _i ~= hidden_index then
+                        ok, row = pcall(added_plugin_buttons[_i], file, is_file, book_props)
+                    end
                     if ok and type(row) == "table" and #row > 0 then
                         for _j, button in ipairs(row) do
                             if type(button) == "table" then

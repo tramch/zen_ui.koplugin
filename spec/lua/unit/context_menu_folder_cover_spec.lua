@@ -647,6 +647,7 @@ describe("folder cover context-menu integration", function()
         local editor_options
         local plugin_args
         local plugin_action_called = false
+        local refresh_action_built = false
         local refreshed = {}
         local FileChooser = {
             show_filter = {},
@@ -662,6 +663,10 @@ describe("folder cover context-menu integration", function()
             moveFile = function() return true end,
             setupLayout = function() end,
             file_dialog_added_buttons = {
+                function()
+                    refresh_action_built = true
+                    return {{ text = "Refresh cached book information" }}
+                end,
                 function(file, is_file, book_props)
                     plugin_args = { file, is_file, book_props }
                     return {
@@ -676,6 +681,7 @@ describe("folder cover context-menu integration", function()
                     }
                 end,
                 function() error("broken plugin") end,
+                index = { coverbrowser_2 = 1 },
             },
         }
         local bookinfo = {
@@ -753,6 +759,8 @@ describe("folder cover context-menu integration", function()
         assert.matches("more-icon", more.text, 1, true)
         more.callback()
         local more_dialog = shown[#shown]
+        assert.is_false(refresh_action_built)
+        assert.is_nil(find_button(more_dialog, "Refresh cached book information"))
         assert.are.equal("/library/book.epub", plugin_args[1])
         assert.is_true(plugin_args[2])
         assert.are.equal("Book", plugin_args[3].title)
