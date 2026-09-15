@@ -344,6 +344,9 @@ return {
         "Fix final KOSync progress when finishing a book",
         "Fix dimmed book covers not showing everywhere"
      },
+     ["3.3.1"] = {
+        "Fix TBR applying Library filter hiding all TBR books"
+     },
      ["3.4.0"] = {
         "Add plugin actions to Context Menu in the More section (Library > Context menu)",
         "Hide empty folders when filtering Library",

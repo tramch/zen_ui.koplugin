@@ -782,9 +782,9 @@ local function sortDetailFiles(files, collate, reverse)
     return sorted
 end
 
--- Filter a file list to only those matching FileChooser.show_filter.status.
--- Returns the original list unchanged when no filter is active.
-local function apply_status_filter(files)
+-- Status-scoped tabs already define their own filter.
+local function apply_status_filter(files, tab_id)
+    if tab_id == "status" or tab_id == "to_be_read" then return files end
     local ok_fc, FileChooser = pcall(require, "ui/widget/filechooser")
     if not ok_fc then return files end
     local status_filter = FileChooser.show_filter and FileChooser.show_filter.status
@@ -838,9 +838,7 @@ local function showDetailSortDialog(group_name, tab_id, menu, files, reload_file
 
         local sorted_files = reload_files and reload_files(collate, reverse)
             or sortDetailFiles(files, collate, reverse)
-        if tab_id ~= "status" then
-            sorted_files = apply_status_filter(sorted_files)
-        end
+        sorted_files = apply_status_filter(sorted_files, tab_id)
 
         local lfs_mod  = require("libs/libkoreader-lfs")
         local util_mod = require("util")
@@ -1039,9 +1037,7 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
 
     -- Sort files based on current settings
     local sorted_files = sortDetailFiles(files, cur_collate, cur_reverse)
-    if tab_id ~= "status" then
-        sorted_files = apply_status_filter(sorted_files)
-    end
+    sorted_files = apply_status_filter(sorted_files, tab_id)
 
     -- Build menu items from sorted files
     local lfs_mod  = require("libs/libkoreader-lfs")
@@ -1284,7 +1280,7 @@ function M.showSourceContextMenu(tab_id, menu, options)
                 collate = get_detail_collate(tab_id, tab_id, "title"),
                 reverse = get_detail_reverse(tab_id, tab_id, false),
             })
-            files = apply_status_filter(files)
+            files = apply_status_filter(files, tab_id)
         end
         local count = tonumber(options.item_count) or #files
         fm.file_chooser:showFileDialog({
@@ -1589,7 +1585,7 @@ function M.showTBRView(injectNavbar)
             collate = cur_collate,
             reverse = cur_reverse,
         })
-        return apply_status_filter(loaded)
+        return apply_status_filter(loaded, tab_id)
     end
 
     local files = loadFiles()
