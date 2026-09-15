@@ -424,6 +424,16 @@ describe("file browser group views", function()
         assert.are.equal(0, legacy_tbr_calls)
     end)
 
+    it("does not apply the global status filter to the TBR page", function()
+        install_group_view({ tbr = { "/later.epub" } })
+        statuses["/later.epub"] = "reading"
+        package.loaded["ui/widget/filechooser"].show_filter.status = { complete = true }
+
+        api.showTBRView()
+
+        assert.are.equal("/later.epub", find_menu("to_be_read").item_table[1].path)
+    end)
+
     it("rebuilds a stale TBR page so navbar taps can reopen it", function()
         install_group_view({ tbr = {} })
 

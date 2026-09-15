@@ -343,5 +343,8 @@ return {
         "Fix guided tour bug when Zen mode toggle removed from controls",
         "Fix final KOSync progress when finishing a book",
         "Fix dimmed book covers not showing everywhere"
+     },
+     ["3.3.1"] = {
+        "Fix TBR applying Library filter hiding all TBR books"
      }
 }
