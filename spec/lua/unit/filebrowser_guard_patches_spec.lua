@@ -616,7 +616,7 @@ describe("file browser guard patches", function()
             abandoned = "abandoned",
             complete = "complete",
         }
-        local saved, cached, opened, invalidated = {}, {}, {}, {}
+        local saved, cached, opened, invalidated, fallback_opened = {}, {}, {}, {}, {}
         local tbr_books = { tbr = true }
         local reader_releases = 0
         local filemanagerutil = {
@@ -656,6 +656,12 @@ describe("file browser guard patches", function()
         ZenSpec.replace("common/memory_policy", {
             releaseForReader = function() reader_releases = reader_releases + 1 end,
         })
+        ZenSpec.replace("apps/reader/readerui", {
+            showReader = function(_, file)
+                fallback_opened[#fallback_opened + 1] = file
+                return "reader-opened"
+            end,
+        })
 
         apply_patch("modules/filebrowser/patches/status_on_open")
         assert.are.equal("opened", filemanagerutil.openFile({}, "new"))
@@ -671,6 +677,8 @@ describe("file browser guard patches", function()
         assert.same({ "new", "tbr", "abandoned", "complete" }, opened)
         assert.same({ "new", "tbr", "abandoned" }, invalidated)
         assert.is_false(tbr_books.tbr)
-        assert.are.equal(4, reader_releases)
+        assert.are.equal("reader-opened", filemanagerutil.openFile(nil, "complete"))
+        assert.same({ "complete" }, fallback_opened)
+        assert.are.equal(5, reader_releases)
     end)
 end)
