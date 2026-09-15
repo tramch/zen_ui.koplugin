@@ -45,6 +45,20 @@ describe("reading goals settings", function()
         assert.are.equal("Monthly books goal: 1", monthly[7].text_func())
     end)
 
+    it("shares one CBZ/CBR exclusion toggle", function()
+        local Goals = require("common/reading_goals")
+        local goals = { periods = { "daily" } }
+        local saves = 0
+        local item = Goals.settingsItems(goals, function() saves = saves + 1 end)[5]
+
+        assert.are.equal("Exclude CBZ/CBR files", item.text)
+        assert.is_false(item.checked_func())
+        item.callback()
+        assert.is_true(goals.exclude_cbz_cbr)
+        assert.is_true(item.checked_func())
+        assert.are.equal(1, saves)
+    end)
+
     it("refreshes every target label after changing its value", function()
         local shown
         ZenSpec.replace("ui/uimanager", {

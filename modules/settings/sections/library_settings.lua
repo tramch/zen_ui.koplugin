@@ -1741,6 +1741,25 @@ function M.build(ctx)
         end,
     }, icons.tbr))
 
+    table.insert(items, IconItem.decorate({
+        text = _("Context menu"),
+        sub_item_table = {
+            {
+                text = _("Plugin actions"),
+                checked_func = function()
+                    return type(config.context_menu) == "table"
+                        and config.context_menu.show_plugin_actions == true
+                end,
+                callback = function()
+                    if type(config.context_menu) ~= "table" then config.context_menu = {} end
+                    config.context_menu.show_plugin_actions =
+                        config.context_menu.show_plugin_actions ~= true
+                    plugin:saveConfig()
+                end,
+            },
+        },
+    }, icons.more))
+
     return items
 end
 

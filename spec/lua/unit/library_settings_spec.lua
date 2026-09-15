@@ -756,4 +756,36 @@ describe("library settings", function()
         }))
         assert.are.equal("/koreader/resources/wallpapers", home_path)
     end)
+
+    it("puts plugin actions off by default under the final Context menu section", function()
+        local saves = 0
+        local config = {
+            browser_hide_up_folder = {},
+            context_menu = { allow_delete = true },
+            features = {},
+        }
+        local items = require("modules/settings/sections/library_settings").build({
+            config = config,
+            plugin = { saveConfig = function() saves = saves + 1 end },
+            save_and_apply = function() end,
+        })
+
+        local context_menu = items[#items]
+        assert.are.equal("Context menu", context_menu.text)
+        assert.are.equal(1, #context_menu.sub_item_table)
+        assert.are.equal("Plugin actions", context_menu.sub_item_table[1].text)
+        local allow_delete
+        for _i, item in ipairs(items) do
+            if item.text == "Allow delete" then allow_delete = item end
+        end
+        assert.is_not_nil(allow_delete)
+        assert.is_true(allow_delete.checked_func())
+        local plugin_actions = context_menu.sub_item_table[1]
+        assert.is_false(plugin_actions.checked_func())
+        assert.is_false(require("config/defaults").context_menu.show_plugin_actions)
+
+        plugin_actions.callback()
+        assert.is_true(plugin_actions.checked_func())
+        assert.are.equal(1, saves)
+    end)
 end)

@@ -76,6 +76,7 @@ describe("folder cover context-menu integration", function()
             filename = "filename-icon",
             details = "details-icon",
             edit = "edit-icon",
+            more = "more-icon",
             read_status = "status-icon",
             refresh = "refresh-icon",
         })
@@ -216,6 +217,36 @@ describe("folder cover context-menu integration", function()
         assert.are.equal("cover.jpeg", stock_calls[1].filename)
         assert.are.equal("book.epub", stock_calls[5].filename)
         assert.are.equal("pathchooser", stock_calls[6].name)
+    end)
+
+    it("hides regular folders without books matching the status filter", function()
+        local empty = { mandatory = "2 \u{F114} 0 \u{F016}" }
+        local matching = { mandatory = "1 \u{F016}" }
+        local FileChooser = {
+            show_filter = { status = { complete = true } },
+            show_file = function() return true end,
+            getList = function()
+                return { empty, matching }, { "finished.epub" }
+            end,
+        }
+        local FileManager = {
+            moveFile = function() return true end,
+            setupLayout = function() end,
+        }
+
+        install_stubs({
+            FileChooser = FileChooser,
+            FileManager = FileManager,
+            Files = { isManaged = function() return false end },
+        })
+        apply_patch()
+
+        local dirs, files = FileChooser.getList({ name = "filemanager" }, "/library", {})
+        assert.are.same({ matching }, dirs)
+        assert.are.same({ "finished.epub" }, files)
+
+        dirs = FileChooser.getList({ name = "pathchooser" }, "/library", {})
+        assert.are.same({ empty, matching }, dirs)
     end)
 
     it("keeps every path chooser traversable without changing its title bar", function()
@@ -610,10 +641,12 @@ describe("folder cover context-menu integration", function()
         assert.are.equal(6, home_rebuilds)
     end)
 
-    it("places metadata editing above Delete in the Edit submenu", function()
+    it("shows plugin actions as an iconless list and preserves Edit ordering", function()
         local shown = {}
         local details_options
         local editor_options
+        local plugin_args
+        local plugin_action_called = false
         local refreshed = {}
         local FileChooser = {
             show_filter = {},
@@ -628,6 +661,22 @@ describe("folder cover context-menu integration", function()
         local FileManager = {
             moveFile = function() return true end,
             setupLayout = function() end,
+            file_dialog_added_buttons = {
+                function(file, is_file, book_props)
+                    plugin_args = { file, is_file, book_props }
+                    return {
+                        {
+                            text = "\u{F05F9}  Incognito",
+                            icon = "plugin.svg",
+                            callback = function() plugin_action_called = true end,
+                        },
+                        {
+                            text_func = function() return "\u{F140B}  Dynamic action" end,
+                        },
+                    }
+                end,
+                function() error("broken plugin") end,
+            },
         }
         local bookinfo = {
             showFromBookDetails = function(_self, file, _props, options)
@@ -640,8 +689,9 @@ describe("folder cover context-menu integration", function()
             bookinfo = bookinfo,
         }
         FileManager.instance = file_manager
+        local context_menu_config = { allow_delete = true }
         _G.__ZEN_UI_PLUGIN = {
-            config = { context_menu = { allow_delete = true } },
+            config = { context_menu = context_menu_config },
         }
 
         install_stubs({
@@ -689,6 +739,39 @@ describe("folder cover context-menu integration", function()
             _zen_collection_name = "Test",
         })
         local dialog = shown[#shown]
+        assert.is_nil(find_button(dialog, "More"))
+        assert.is_nil(plugin_args)
+
+        context_menu_config.show_plugin_actions = true
+        file_chooser:showFileDialog({
+            path = "/library/book.epub",
+            is_file = true,
+            _zen_collection_name = "Test",
+        })
+        dialog = shown[#shown]
+        local more = assert(find_button(dialog, "More"))
+        assert.matches("more-icon", more.text, 1, true)
+        more.callback()
+        local more_dialog = shown[#shown]
+        assert.are.equal("/library/book.epub", plugin_args[1])
+        assert.is_true(plugin_args[2])
+        assert.are.equal("Book", plugin_args[3].title)
+        assert.are.equal(2, #more_dialog.buttons)
+        assert.are.equal(1, #more_dialog.buttons[1])
+        assert.are.equal(1, #more_dialog.buttons[2])
+        assert.are.equal("Incognito", more_dialog.buttons[1][1].text)
+        assert.is_nil(more_dialog.buttons[1][1].icon)
+        assert.are.equal("left", more_dialog.buttons[1][1].align)
+        assert.are.equal("Dynamic action", more_dialog.buttons[2][1].text_func())
+        assert(find_button(more_dialog, "Incognito")).callback()
+        assert.is_true(plugin_action_called)
+
+        file_chooser:showFileDialog({
+            path = "/library/book.epub",
+            is_file = true,
+            _zen_collection_name = "Test",
+        })
+        dialog = shown[#shown]
         assert(find_button(dialog, "Details")).callback()
         assert.is_nil(details_options.edit_callback)
         assert.is_false(details_options.home_context)

@@ -186,7 +186,7 @@ return {
     build = function(ctx)
         local width = ctx.width
         local height = ctx.height
-        local stats = ctx.data.stats or {}
+        local stats = ctx.data.goal_stats or ctx.data.stats or {}
         local goals = ctx.config.goals or {}
         local legacy_metric = goals.metric == "time" and "time" or "pages"
         local metrics = type(goals.metrics) == "table" and goals.metrics or {}

@@ -65,6 +65,7 @@ return {
     icon         = "\u{F02F5}",
     plugin       = "\u{F06A5}",
     action       = "\u{F140B}",
+    more         = "\u{F01D8}",  -- mdi-dots-horizontal
     settings       = "\u{F0493}",
 
     -- network / sync (opds.lua)

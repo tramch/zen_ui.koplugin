@@ -2052,6 +2052,12 @@ msgstr "Voer je GitHub-gebruikersnaam in om vermeld te worden in de issue"
 msgid "Exact ISBN match"
 msgstr "Exacte ISBN-overeenkomst"
 
+#. Type: setting
+#. Context: items[#items + 1] = { text = _("Exclude CBZ/CBR files"), checked_func = function() return goals.exclude_cbz_cbr end,
+#: reading_goals.lua:156
+msgid "Exclude CBZ/CBR files"
+msgstr "CBZ-/CBR-bestanden uitsluiten"
+
 #. Type: button
 #. Context: text = _("Are you sure you want to exit KOReader?"), ok_text = _("Exit"), ok_callback = function()
 #: nav_button_model.lua:24 navbar.lua:324 quick_settings.lua:683 quick_settings.lua:687 menu_settings.lua:76 navbar_settings.lua:183

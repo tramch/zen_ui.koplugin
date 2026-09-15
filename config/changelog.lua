@@ -343,5 +343,10 @@ return {
         "Fix guided tour bug when Zen mode toggle removed from controls",
         "Fix final KOSync progress when finishing a book",
         "Fix dimmed book covers not showing everywhere"
+     },
+     ["3.4.0"] = {
+        "Add plugin actions to Context Menu in the More section (Library > Context menu)",
+        "Hide empty folders when filtering Library",
+        "Option to exclude CBZ/CBR from Reading Goals"
      }
 }

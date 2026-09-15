@@ -332,6 +332,7 @@ local function apply_context_menu()
 
     if type(FileChooser.show_file) == "function" and not FileChooser._zen_status_filter_patched then
         local orig_show_file = FileChooser.show_file
+        local orig_getList = FileChooser.getList
         FileChooser._zen_status_filter_patched = true
 
         function FileChooser:show_file(filename, fullpath)
@@ -357,6 +358,22 @@ local function apply_context_menu()
 
             local display_status = book_status.getDisplayStatusFromFile(fullpath)
             return status_filter[display_status] and true or false
+        end
+
+        if type(orig_getList) == "function" then
+            function FileChooser:getList(path, collate)
+                local dirs, files = orig_getList(self, path, collate)
+                local status_filter = FileChooser.show_filter and FileChooser.show_filter.status
+                if self.name == "filemanager" and collate and status_filter then
+                    for index = #dirs, 1, -1 do
+                        local mandatory = dirs[index] and dirs[index].mandatory
+                        local count = type(mandatory) == "string"
+                            and tonumber(mandatory:match("(%d+)%s*\xef\x80\x96"))
+                        if count == 0 then table.remove(dirs, index) end
+                    end
+                end
+                return dirs, files
+            end
         end
     end
 
@@ -909,7 +926,7 @@ local function apply_context_menu()
                 end)
             end
 
-            local dialog_title, dialog_cover_widget
+            local dialog_title, dialog_cover_widget, book_props
 
             local function showCoverFullscreen(cover_path)
                 local ok2, bim2 = pcall(require, "bookinfomanager")
@@ -1107,6 +1124,7 @@ local function apply_context_menu()
                     local title_str, authors_str, tags_str_local, series_str_local
                     if ok then
                         local bookinfo = BookInfoManager:getBookInfo(file, true)
+                        book_props = bookinfo
                         if bookinfo then
                             if not bookinfo.ignore_meta then
                                 if bookinfo.title then
@@ -1726,6 +1744,56 @@ local function apply_context_menu()
                     buttons = apply_button_group_font(edit_buttons),
                 }
                 UIManager:show(edit_dialog)
+            end
+
+            local plugin_action_rows
+            local added_plugin_buttons = file_manager.file_dialog_added_buttons
+                or FileManager.file_dialog_added_buttons
+            local context_menu_config = zen_plugin
+                and type(zen_plugin.config) == "table"
+                and type(zen_plugin.config.context_menu) == "table"
+                and zen_plugin.config.context_menu
+            if context_menu_config and context_menu_config.show_plugin_actions == true
+                    and not is_virtual_folder and type(added_plugin_buttons) == "table" then
+                local rows = {}
+                for _i = 1, #added_plugin_buttons do
+                    local ok, row = pcall(added_plugin_buttons[_i], file, is_file, book_props)
+                    if ok and type(row) == "table" and #row > 0 then
+                        for _j, button in ipairs(row) do
+                            if type(button) == "table" then
+                                local clean_button = {}
+                                for key, value in pairs(button) do clean_button[key] = value end
+                                clean_button.align = "left"
+                                clean_button.icon = nil
+                                clean_button.icon_func = nil
+                                local glyph, text
+                                if type(clean_button.text) == "string" then
+                                    glyph, text = split_inline_icon(clean_button.text)
+                                end
+                                if glyph then clean_button.text = text end
+                                local text_func = clean_button.text_func
+                                if type(text_func) == "function" then
+                                    clean_button.text_func = function()
+                                        local dynamic = text_func()
+                                        if type(dynamic) ~= "string" then return dynamic end
+                                        local dynamic_glyph, dynamic_text = split_inline_icon(dynamic)
+                                        return dynamic_glyph and dynamic_text or dynamic
+                                    end
+                                end
+                                table.insert(rows, { clean_button })
+                            end
+                        end
+                    end
+                end
+                if #rows > 0 then plugin_action_rows = rows end
+            end
+
+            local function showPluginActionsSubmenu()
+                close_dialog()
+                self_fc.file_dialog = ButtonDialog:new{
+                    buttons = apply_button_group_font(plugin_action_rows),
+                }
+                UIManager:show(self_fc.file_dialog)
             end
 
             -- Main dialog buttons
@@ -2389,6 +2457,16 @@ local function apply_context_menu()
                         text = "\u{F090C}  " .. _("Edit") .. "  " .. submenu_arrow,
                         align = "left",
                         callback = showEditSubmenu,
+                    },
+                })
+            end
+
+            if plugin_action_rows then
+                table.insert(buttons, {
+                    {
+                        text = icons.more .. "  " .. _("More") .. "  " .. submenu_arrow,
+                        align = "left",
+                        callback = showPluginActionsSubmenu,
                     },
                 })
             end

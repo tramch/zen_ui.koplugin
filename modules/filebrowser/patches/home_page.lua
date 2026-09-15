@@ -52,6 +52,7 @@ local HOME_DATASET_TTL = 120
 local HOME_STRIP_MAX_BOOKS = 40
 local HOME_STATS_TTL = 60
 local _home_stats_cache = { key = nil, value = nil, expires_at = 0 }
+local _home_goal_stats_cache = { key = nil, value = nil, expires_at = 0 }
 
 local function copy_home_strip_pages(state)
     local copy = {}
@@ -858,6 +859,8 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
     local wants_favorite_badge = cover_badges.show_favorite_badge == true
     local stats_cached = nil
     local stats_cached_key = nil
+    local goal_stats_cached = nil
+    local goal_stats_cached_key = nil
     local strip_offsets = copy_home_strip_pages(strip_page_state)
     local book_cache_hits = 0
     local book_cache_misses = 0
@@ -893,35 +896,51 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         if requested == configured then return "featured" end
     end
 
-    local function get_stats(fields)
-        if stats_cached then return stats_cached end
-        local key = stats_fields_key(fields)
-        if _home_stats_cache.value and _home_stats_cache.key == key
-                and os.time() < _home_stats_cache.expires_at then
-            stats_cached = _home_stats_cache.value
-            return stats_cached
-        end
-        local ok_stats, StatsDB = pcall(require, "common/db_stats")
-        if ok_stats and StatsDB and type(StatsDB.queryHomeStats) == "function" then
-            stats_cached = StatsDB.queryHomeStats(fields) or {}
-        elseif ok_stats and StatsDB and type(StatsDB.queryStats) == "function" then
-            stats_cached = StatsDB.queryStats() or {}
+    local function add_finished_counts(stats, fields, exclude_cbz_cbr)
+        if not (fields and (fields.finished_this_month or fields.finished_this_year)) then return end
+        local ok_library, LibraryDB = pcall(require, "common/db_library")
+        local counts = ok_library and LibraryDB and LibraryDB.getBookCounts
+            and LibraryDB.getBookCounts(exclude_cbz_cbr) or {}
+        stats.finished_this_month = fields.finished_this_month
+            and (counts.finished_this_month or 0) or 0
+        stats.finished_this_year = fields.finished_this_year
+            and (counts.finished_this_year or 0) or 0
+    end
+
+    local function get_stats(fields, exclude_cbz_cbr)
+        local result
+        if exclude_cbz_cbr then
+            result = goal_stats_cached
         else
-            stats_cached = {}
+            result = stats_cached
         end
-        _home_stats_cache.key = key
-        _home_stats_cache.value = stats_cached
-        _home_stats_cache.expires_at = os.time() + HOME_STATS_TTL
-        if fields and (fields.finished_this_month or fields.finished_this_year) then
-            local ok_library, LibraryDB = pcall(require, "common/db_library")
-            local counts = ok_library and LibraryDB and LibraryDB.getBookCounts
-                and LibraryDB.getBookCounts() or {}
-            stats_cached.finished_this_month = fields.finished_this_month
-                and (counts.finished_this_month or 0) or 0
-            stats_cached.finished_this_year = fields.finished_this_year
-                and (counts.finished_this_year or 0) or 0
+        if result then return result end
+        local key = stats_fields_key(fields)
+        local shared_cache = exclude_cbz_cbr and _home_goal_stats_cache or _home_stats_cache
+        if shared_cache.value and shared_cache.key == key
+                and os.time() < shared_cache.expires_at then
+            result = shared_cache.value
+        else
+            local ok_stats, StatsDB = pcall(require, "common/db_stats")
+            if ok_stats and StatsDB and type(StatsDB.queryHomeStats) == "function" then
+                result = StatsDB.queryHomeStats(fields, exclude_cbz_cbr) or {}
+            elseif not exclude_cbz_cbr and ok_stats and StatsDB
+                    and type(StatsDB.queryStats) == "function" then
+                result = StatsDB.queryStats() or {}
+            else
+                result = {}
+            end
+            add_finished_counts(result, fields, exclude_cbz_cbr)
+            shared_cache.key = key
+            shared_cache.value = result
+            shared_cache.expires_at = os.time() + HOME_STATS_TTL
         end
-        return stats_cached
+        if exclude_cbz_cbr then
+            goal_stats_cached = result
+        else
+            stats_cached = result
+        end
+        return result
     end
 
     local function get_history()
@@ -2180,6 +2199,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
     end
 
     provider.stats = {}
+    provider.goal_stats = provider.stats
 
     function provider:prepareStats(rows, force)
         local fields = collect_stats_fields(rows, dcfg)
@@ -2188,6 +2208,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             stats_cached = {}
             stats_cached_key = key
             self.stats = stats_cached
+            self.goal_stats = self.stats
             return self.stats
         end
         if force or key ~= stats_cached_key then
@@ -2199,6 +2220,24 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             end
         end
         self.stats = get_stats(fields)
+        self.goal_stats = self.stats
+        local goals = type(dcfg.goals) == "table" and dcfg.goals or {}
+        if goals.exclude_cbz_cbr == true then
+            for _i, component in ipairs(rows or {}) do
+                if component.id == "reading_goals" then
+                    if force or key ~= goal_stats_cached_key then
+                        goal_stats_cached = nil
+                        goal_stats_cached_key = key
+                        if force and _home_goal_stats_cache.key == key then
+                            _home_goal_stats_cache.value = nil
+                            _home_goal_stats_cache.expires_at = 0
+                        end
+                    end
+                    self.goal_stats = get_stats(fields, true)
+                    break
+                end
+            end
+        end
         return self.stats
     end
 
@@ -2213,7 +2252,10 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
     function provider:clearStats()
         stats_cached = nil
         stats_cached_key = nil
+        goal_stats_cached = nil
+        goal_stats_cached_key = nil
         self.stats = {}
+        self.goal_stats = self.stats
         return self.stats
     end
 

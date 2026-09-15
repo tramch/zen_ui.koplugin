@@ -56,9 +56,9 @@ describe("home data and book caches", function()
         })
         ZenSpec.replace("common/reading_goals", {})
         ZenSpec.replace("common/db_stats", {
-            queryHomeStats = function()
+            queryHomeStats = function(_fields, exclude_cbz_cbr)
                 stats_query_count = stats_query_count + 1
-                return { today_pages = 12 }
+                return { today_pages = exclude_cbz_cbr and 7 or 12 }
             end,
         })
         ZenSpec.replace("config/preset_store", {})
@@ -455,6 +455,19 @@ describe("home data and book caches", function()
         assert.are.equal(1, stats_query_count)
 
         second:prepareStats(rows, true)
+        assert.are.equal(2, stats_query_count)
+    end)
+
+    it("keeps comic-free goal totals separate from other Home stats", function()
+        local Home = get_home_module(require("modules/filebrowser/patches/home_page"))
+        local provider = get_build_data_provider(Home)({ browser_cover_badges = {} }, {
+            goals = { exclude_cbz_cbr = true, periods = { "daily" } },
+            modules = {},
+        })
+        local rows = { { id = "stats_triplet" }, { id = "reading_goals" } }
+
+        assert.are.equal(12, provider:prepareStats(rows).today_pages)
+        assert.are.equal(7, provider.goal_stats.today_pages)
         assert.are.equal(2, stats_query_count)
     end)
 
