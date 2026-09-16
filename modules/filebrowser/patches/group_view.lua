@@ -1093,6 +1093,16 @@ local function showDetailView(group_item, injectNavbar, tab_id, navbar_tab_id)
         onMenuHold = function(menu_self, item)
             if show_select_mode_menu() then return true end
             if not item.path then return end
+            local ok_kindle, Kindle = pcall(require,
+                "modules/filebrowser/patches/kindle_virtual_library")
+            if ok_kindle and type(Kindle.isBookPath) == "function"
+                    and Kindle.isBookPath(item.path)
+                    and type(Kindle.showBookContextMenu) == "function"
+                    and Kindle.showBookContextMenu(menu_self, item, function()
+                        menu_self:updateItems()
+                    end) then
+                return true
+            end
             local fm = get_file_manager()
             if fm and fm.file_chooser and fm.file_chooser.showFileDialog then
                 show_file_dialog_with_refresh(fm.file_chooser, menu_self, {

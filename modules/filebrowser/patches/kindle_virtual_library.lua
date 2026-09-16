@@ -179,6 +179,23 @@ function M.getBookPaths()
     return paths
 end
 
+function M.getBookMetadata(filepath)
+    local book = kindle_book(filepath)
+    if not book then return nil end
+    local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+    local info = {}
+    if ok_bim then
+        local ok_info, stored = pcall(BookInfoManager.getBookInfo,
+            BookInfoManager, filepath, false)
+        if ok_info and type(stored) == "table" then info = stored end
+    end
+    info.title = info.title or book.display_name or book.title
+    if not info.authors and type(book.authors) == "table" then
+        info.authors = table.concat(book.authors, "\n")
+    end
+    return info
+end
+
 function M.installMetadataIntegration()
     local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
     if not ok_bim or type(BookInfoManager) ~= "table"

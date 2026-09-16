@@ -18,6 +18,7 @@ describe("file browser group views", function()
     local status_get
     local select_menu_calls
     local home_rebuilds
+    local kindle_context_item
     local saved_modules
     local replaced_modules = {
         "gettext",
@@ -29,6 +30,7 @@ describe("file browser group views", function()
         "common/paths",
         "common/shared_state",
         "modules/filebrowser/patches/standalone_page",
+        "modules/filebrowser/patches/kindle_virtual_library",
         "common/db_bookinfo",
         "common/tbr_index",
         "bookinfomanager",
@@ -70,6 +72,7 @@ describe("file browser group views", function()
         status_get = nil
         select_menu_calls = 0
         home_rebuilds = 0
+        kindle_context_item = nil
 
         local plugin = {
             config = config,
@@ -126,6 +129,13 @@ describe("file browser group views", function()
             suppress_page_info_tap = function() end,
             apply_status_row = function(menu, options)
                 menu._test_back_callback = options.back_callback
+            end,
+        })
+        ZenSpec.replace("modules/filebrowser/patches/kindle_virtual_library", {
+            isBookPath = function(path) return path == groups.kindle_path end,
+            showBookContextMenu = function(_menu, item)
+                kindle_context_item = item
+                return true
             end,
         })
         ZenSpec.replace("common/db_bookinfo", {
@@ -899,5 +909,22 @@ describe("file browser group views", function()
         assert.is_true(book.dim)
         assert.is_true(file_manager.selected_files["/book.epub"])
         assert.are.equal(0, #opened)
+    end)
+
+    it("uses the Kindle context menu for virtual library books", function()
+        install_group_view({
+            authors = { { author = "Writer", files = { "/kindle.epub" } } },
+            kindle_path = "/kindle.epub",
+        })
+
+        api.showAuthorsView()
+        local root = assert(find_menu("authors"))
+        root.onMenuSelect(root, root.item_table[1])
+        local detail = assert(find_menu("authors_detail"))
+        local book = detail.item_table[1]
+
+        assert.is_true(detail.onMenuHold(detail, book))
+        assert.are.equal(book, kindle_context_item)
+        assert.is_nil(file_dialog_args)
     end)
 end)
