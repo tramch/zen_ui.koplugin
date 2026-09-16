@@ -757,7 +757,7 @@ describe("library settings", function()
         assert.are.equal("/koreader/resources/wallpapers", home_path)
     end)
 
-    it("puts plugin actions off by default under the final Context menu section", function()
+    it("puts archive and plugin actions off by default under Context menu", function()
         local saves = 0
         local config = {
             browser_hide_up_folder = {},
@@ -772,20 +772,26 @@ describe("library settings", function()
 
         local context_menu = items[#items]
         assert.are.equal("Context menu", context_menu.text)
-        assert.are.equal(1, #context_menu.sub_item_table)
-        assert.are.equal("Plugin actions", context_menu.sub_item_table[1].text)
+        assert.are.equal(2, #context_menu.sub_item_table)
+        local archive = context_menu.sub_item_table[1]
+        assert.are.equal("Archive", archive.text)
+        assert.are.equal("Plugin actions", context_menu.sub_item_table[2].text)
         local allow_delete
         for _i, item in ipairs(items) do
             if item.text == "Allow delete" then allow_delete = item end
         end
         assert.is_not_nil(allow_delete)
         assert.is_true(allow_delete.checked_func())
-        local plugin_actions = context_menu.sub_item_table[1]
+        local plugin_actions = context_menu.sub_item_table[2]
+        assert.is_false(archive.checked_func())
         assert.is_false(plugin_actions.checked_func())
+        assert.is_false(require("config/defaults").context_menu.show_archive)
         assert.is_false(require("config/defaults").context_menu.show_plugin_actions)
 
+        archive.callback()
+        assert.is_true(archive.checked_func())
         plugin_actions.callback()
         assert.is_true(plugin_actions.checked_func())
-        assert.are.equal(1, saves)
+        assert.are.equal(2, saves)
     end)
 end)

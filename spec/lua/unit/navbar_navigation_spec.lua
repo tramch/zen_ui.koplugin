@@ -207,6 +207,8 @@ describe("file browser navbar navigation", function()
         })
         ZenSpec.replace("common/paths", {
             getHomeDir = function() return "/library" end,
+            getArchiveDir = function() return "/archive" end,
+            isArchiveRoot = function(path) return path:gsub("/+$", "") == "/archive" end,
             isInHomeDir = function(path) return path:sub(1, 8) == "/library" end,
         })
         ZenSpec.replace("common/plugin_root", "/plugin")
@@ -245,7 +247,8 @@ describe("file browser navbar navigation", function()
         })
         ZenSpec.replace("libs/libkoreader-lfs", {
             attributes = function(path, field)
-                if field == "mode" and (path == "/library" or dir_mtimes[path]) then
+                if field == "mode" and (path == "/library" or path == "/archive"
+                        or dir_mtimes[path]) then
                     return "directory"
                 end
                 if field == "modification" then return dir_mtimes[path] end
@@ -283,13 +286,14 @@ describe("file browser navbar navigation", function()
                 features = { navbar = true, restore_library_view = false },
                 navbar = {
                     show_tabs = {
-                        books = true, folder = true, home = true, authors = true, series = true,
+                        books = true, archive = true, folder = true, home = true,
+                        authors = true, series = true,
                         tags = true, to_be_read = true, history = true,
                         favorites = true, collections = true, search = true,
                         page_left = true, page_right = true, menu = true,
                     },
                     tab_order = {
-                        "home", "books", "authors", "series", "tags", "to_be_read",
+                        "home", "books", "archive", "authors", "series", "tags", "to_be_read",
                         "history", "favorites", "collections", "search",
                         "page_left", "page_right", "menu",
                     },
@@ -357,10 +361,10 @@ describe("file browser navbar navigation", function()
     it("keeps configured tab order and resolves the first enabled default", function()
         assert.are.equal("home", _G.__ZEN_UI_NAVBAR_RESOLVE_DEFAULT_TAB())
         assert.are.same({
-            "home", "books", "authors", "series", "tags", "to_be_read",
+            "home", "books", "archive", "authors", "series", "tags", "to_be_read",
             "history", "favorites", "collections", "search",
             "page_left", "page_right", "menu",
-        }, { unpack(_G.__ZEN_UI_PLUGIN.config.navbar.tab_order, 1, 13) })
+        }, { unpack(_G.__ZEN_UI_PLUGIN.config.navbar.tab_order, 1, 14) })
         assert.are.equal("Home", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
     end)
 
@@ -1227,6 +1231,47 @@ describe("file browser navbar navigation", function()
 
         FileManager.onPathChanged(fm, "/library/Fictional")
         assert.are.equal("Library", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+    end)
+
+    it("routes archive folder shortcuts through the Archive tab", function()
+        make_instance()
+        calls = {}
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_FOLDER("/archive"))
+
+        assert.are.same({ "books:/archive" }, calls)
+        assert.are.equal("Archive", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+        assert.are.equal("/archive", FileManager.instance.file_chooser._zen_direct_archive_root)
+    end)
+
+    it("resumes deferred covers when Archive replaces a visible Home startup", function()
+        local fm = make_instance()
+        local fc = fm.file_chooser
+        fm._zen_hidden_home_startup = true
+        fc._zen_hidden_home_startup = true
+        local suspended_cover_jobs = 0
+        local cover_resume_calls = 0
+        fc._zen_resume_visible_cover_work = function()
+            cover_resume_calls = cover_resume_calls + 1
+            assert.are.equal(2, suspended_cover_jobs)
+            suspended_cover_jobs = 0
+            return true
+        end
+        fc._zen_cancel_hidden_folder_prewarm = function(_self, _reason, mode)
+            if mode == "discard" then suspended_cover_jobs = 0 end
+        end
+        fc.changeToPath = function(_, path)
+            calls[#calls + 1] = "books:" .. path
+            suspended_cover_jobs = 2
+        end
+        calls = {}
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("archive"))
+
+        assert.are.same({ "books:/archive" }, calls)
+        assert.is_nil(fm._zen_hidden_home_startup)
+        assert.is_nil(fc._zen_hidden_home_startup)
+        assert.are.equal(1, cover_resume_calls)
     end)
 
     it("keeps Library active when Folder contains the library root", function()
@@ -2114,13 +2159,13 @@ describe("file browser navbar navigation", function()
     it("dispatches books and stock file-browser tabs to their intended actions", function()
         make_instance()
         for _i, id in ipairs({
-            "books", "history", "favorites", "collections", "search",
+            "books", "archive", "history", "favorites", "collections", "search",
             "page_left", "page_right", "menu",
         }) do
             assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB(id))
         end
         assert.are.same({
-            "books:/library", "history", "favorites", "collections", "search",
+            "books:/library", "books:/archive", "history", "favorites", "collections", "search",
             "previous", "next", "menu",
         }, calls)
         assert.are.equal("Collections", _G.__ZEN_UI_ACTIVE_TAB_LABEL)

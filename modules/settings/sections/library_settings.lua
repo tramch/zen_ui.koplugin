@@ -1745,6 +1745,19 @@ function M.build(ctx)
         text = _("Context menu"),
         sub_item_table = {
             {
+                text = _("Archive"),
+                checked_func = function()
+                    return type(config.context_menu) == "table"
+                        and config.context_menu.show_archive == true
+                end,
+                callback = function()
+                    if type(config.context_menu) ~= "table" then config.context_menu = {} end
+                    config.context_menu.show_archive =
+                        config.context_menu.show_archive ~= true
+                    plugin:saveConfig()
+                end,
+            },
+            {
                 text = _("Plugin actions"),
                 checked_func = function()
                     return type(config.context_menu) == "table"

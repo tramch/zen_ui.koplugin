@@ -15,6 +15,7 @@ local PresetStore = require("config/preset_store")
 local Registry = require("modules/filebrowser/patches/home/components/registry")
 local StandalonePage = require("modules/filebrowser/patches/standalone_page")
 local SharedState = require("common/shared_state")
+local LibraryPaths = require("common/paths")
 local utils = require("common/utils")
 local WidgetResources = require("common/widget_resources")
 local UIManager = require("ui/uimanager")
@@ -959,7 +960,6 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
 
         local hist = ReadHistory.hist or {}
         local lfs = require("libs/libkoreader-lfs")
-        local paths = require("common/paths")
         local function is_rakuyomi_history_path(path)
             if path:lower():sub(-4) ~= ".cbz" then return false end
             local Rakuyomi = rawget(_G, "__ZEN_UI_RAKUYOMI")
@@ -973,11 +973,11 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
 
         for _i, entry in ipairs(hist) do
             local raw_path = entry and entry.file
-            local path = type(raw_path) == "string" and paths.normPath(raw_path) or nil
+            local path = type(raw_path) == "string" and LibraryPaths.normPath(raw_path) or nil
             if path ~= nil
                 and path ~= ""
                 and lfs.attributes(path, "mode") == "file"
-                and (paths.isInHomeDir(path) or is_rakuyomi_history_path(path)) then
+                and (LibraryPaths.isInHomeDir(path) or is_rakuyomi_history_path(path)) then
                 table.insert(dataset.history, path)
                 if #dataset.history >= HOME_STRIP_MAX_BOOKS then break end
             end
@@ -1474,7 +1474,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
             local entries = {}
             for _key, entry in pairs(collection) do
                 if type(entry) == "table" and type(entry.file) == "string"
-                        and entry.file ~= "" then
+                        and entry.file ~= "" and LibraryPaths.isInHomeDir(entry.file) then
                     entries[#entries + 1] = entry
                 end
             end
@@ -1726,7 +1726,7 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         local entries = {}
         for _key, entry in pairs(collection) do
             if type(entry) == "table" and type(entry.file) == "string"
-                    and entry.file ~= "" then
+                    and entry.file ~= "" and LibraryPaths.isInHomeDir(entry.file) then
                 entries[#entries + 1] = entry
             end
         end

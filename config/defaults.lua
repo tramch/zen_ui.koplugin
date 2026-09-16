@@ -104,6 +104,7 @@ local defaults = {
     navbar = {
         show_tabs = {
             books = true,
+            archive = false,
             folder = false,
             kindle = false,
             manga = false,
@@ -282,6 +283,7 @@ local defaults = {
     },
     context_menu = {
         allow_delete = true,
+        show_archive = false,
         show_plugin_actions = false,
     },
     reader_top_status_bar = {

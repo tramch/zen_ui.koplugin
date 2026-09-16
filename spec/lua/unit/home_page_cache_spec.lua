@@ -136,7 +136,9 @@ describe("home data and book caches", function()
         ZenSpec.replace("common/paths", {
             getHomeDir = function() return "/library" end,
             normPath = function(path) return path end,
-            isInHomeDir = function() return true end,
+            isInHomeDir = function(path)
+                return path == "/library" or path:sub(1, 9) == "/library/"
+            end,
         })
         ZenSpec.replace("common/book_status", {
             isImageFile = function() return false end,
@@ -1359,6 +1361,7 @@ describe("home data and book caches", function()
             default_collection_name = "favorites",
             coll = {
                 favorites = {
+                    archived = { file = "/archive/old.epub", order = 0 },
                     a = { file = "/library/alpha.epub", order = 2 },
                     b = { file = "/library/beta.epub", order = 1 },
                 },
@@ -1569,6 +1572,7 @@ describe("home data and book caches", function()
         ZenSpec.replace("readcollection", {
             coll = {
                 Adventure = {
+                    archived = { file = "/archive/old.epub", order = 0 },
                     a = { file = "/library/alpha.epub", order = 1 },
                     b = { file = "/library/beta.epub", order = 2 },
                 },
