@@ -256,7 +256,7 @@ function M.markCompleteAndArchive(reader_status, status_widget)
                 settings:saveSetting(original_dirs_key, original_dirs)
                 settings:flush()
                 FileManager:showFiles(source_dir)
-                show_message(_("Book marked as complete and moved to archive."))
+                show_message(_("Book moved to archive."))
             else
                 FileManager:showFiles(source_dir, file)
                 show_message(_("Failed to move book to archive."))
