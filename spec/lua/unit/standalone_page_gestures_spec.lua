@@ -170,6 +170,34 @@ describe("standalone page gestures", function()
         assert.are.same({ "tap_bottom_right_corner" }, gesture_calls)
     end)
 
+    it("gives standalone pagination priority over Gesture Manager taps", function()
+        local StandalonePage = require("modules/filebrowser/patches/standalone_page")
+        local page_calls = 0
+        local gesture_calls = {}
+        local page_zone = zone("zen_pn_left_tap", "tap", {})
+        local menu = {
+            _zen_page_number_zones = { page_zone.def },
+            _zones = { zen_pn_left_tap = page_zone },
+            handleEvent = function()
+                page_calls = page_calls + 1
+                return true
+            end,
+        }
+        FileManager.instance = {
+            _ordered_touch_zones = {
+                zone("tap_bottom_left_corner", "tap", gesture_calls),
+            },
+        }
+        StandalonePage.enable_gesture_manager_dispatch(menu)
+
+        assert.is_true(menu:handleEvent({
+            handler = "onGesture",
+            args = { { ges = "tap" } },
+        }))
+        assert.are.equal(1, page_calls)
+        assert.are.same({}, gesture_calls)
+    end)
+
     it("keeps Home page swipes local without suppressing diagonals", function()
         local StandalonePage = require("modules/filebrowser/patches/standalone_page")
         local swipes = {}

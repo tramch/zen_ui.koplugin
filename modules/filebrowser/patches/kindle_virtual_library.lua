@@ -309,6 +309,15 @@ function M.showBookContextMenu(menu, item, after_change)
         end
     end
 
+    local function refresh_status()
+        if menu and type(menu.updateItems) == "function" then
+            menu._do_center_partial_rows = false
+            menu:updateItems(menu.page or 1, true)
+        else
+            refresh_view()
+        end
+    end
+
     local icons = require("common/inline_icon_map")
     local _ = require("gettext")
     local clear_cache = {{
@@ -340,7 +349,7 @@ function M.showBookContextMenu(menu, item, after_change)
             if type(library.refresh) == "function" then library:refresh(true) end
             refresh_view()
         end,
-        _zen_after_status_change = refresh_view,
+        _zen_after_status_change = refresh_status,
     })
     return true
 end

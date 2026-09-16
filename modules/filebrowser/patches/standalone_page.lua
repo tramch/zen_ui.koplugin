@@ -85,6 +85,17 @@ local function is_navbar_gesture(menu, ges)
         and y >= screen_h - navbar_h
 end
 
+local function is_pagination_gesture(menu, ges)
+    if not ges then return false end
+    for _i, zone in ipairs(menu and menu._zen_page_number_zones or {}) do
+        local registered = menu._zones and menu._zones[zone.id]
+        if registered and registered.gs_range and registered.gs_range:match(ges) then
+            return true
+        end
+    end
+    return false
+end
+
 -- broadcastEvent dispatches to *every* window-stack widget directly, including
 -- FileManager.instance (which sits beneath the standalone page). Forwarding
 -- broadcast events to FM as well would dispatch them twice -- harmless for most
@@ -141,12 +152,13 @@ function M.enable_gesture_manager_dispatch(menu)
     function menu:handleEvent(event)
         local ges = event and event.handler == "onGesture"
             and event.args and event.args[1] or nil
+        local navbar_gesture = is_navbar_gesture(self, ges)
         local local_checked = false
-        if is_navbar_gesture(self, ges) then
+        if navbar_gesture or is_pagination_gesture(self, ges) then
             local_checked = true
             if orig_handleEvent and orig_handleEvent(self, event) then return true end
         end
-        if ges and dispatch_gesture_manager(ges) then
+        if not navbar_gesture and ges and dispatch_gesture_manager(ges) then
             return true
         end
         if not local_checked and orig_handleEvent then

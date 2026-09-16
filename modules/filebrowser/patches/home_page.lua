@@ -855,6 +855,14 @@ end
 local function build_data_provider(cfg, dcfg, strip_page_state)
     local provider = {}
     local dataset = get_home_dataset()
+    local rakuyomi_cfg = type(cfg) == "table" and cfg.rakuyomi or nil
+    local exclude_rakuyomi = type(rakuyomi_cfg) == "table"
+        and rakuyomi_cfg.exclude_from_home == true
+    if dataset.exclude_rakuyomi ~= exclude_rakuyomi then
+        dataset.exclude_rakuyomi = exclude_rakuyomi
+        dataset.history = nil
+        clear_home_dataset_derived(dataset)
+    end
     local cover_badges = type(cfg) == "table" and type(cfg.browser_cover_badges) == "table"
         and cfg.browser_cover_badges or {}
     local wants_favorite_badge = cover_badges.show_favorite_badge == true
@@ -960,6 +968,8 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
 
         local hist = ReadHistory.hist or {}
         local lfs = require("libs/libkoreader-lfs")
+        local ok_kindle, Kindle = pcall(
+            require, "modules/filebrowser/patches/kindle_virtual_library")
         local function is_rakuyomi_history_path(path)
             if path:lower():sub(-4) ~= ".cbz" then return false end
             local Rakuyomi = rawget(_G, "__ZEN_UI_RAKUYOMI")
@@ -974,10 +984,18 @@ local function build_data_provider(cfg, dcfg, strip_page_state)
         for _i, entry in ipairs(hist) do
             local raw_path = entry and entry.file
             local path = type(raw_path) == "string" and LibraryPaths.normPath(raw_path) or nil
+            local in_library = path ~= nil and LibraryPaths.isInHomeDir(path)
+            local is_kindle = path ~= nil and not in_library and ok_kindle
+                and type(Kindle.isBookPath) == "function"
+                and Kindle.isBookPath(path)
+            local is_rakuyomi = path ~= nil and not is_kindle
+                and (exclude_rakuyomi or not in_library)
+                and is_rakuyomi_history_path(path)
             if path ~= nil
                 and path ~= ""
-                and lfs.attributes(path, "mode") == "file"
-                and (LibraryPaths.isInHomeDir(path) or is_rakuyomi_history_path(path)) then
+                and (is_kindle or lfs.attributes(path, "mode") == "file")
+                and (is_kindle or in_library or is_rakuyomi)
+                and not (exclude_rakuyomi and is_rakuyomi) then
                 table.insert(dataset.history, path)
                 if #dataset.history >= HOME_STRIP_MAX_BOOKS then break end
             end

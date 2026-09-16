@@ -303,6 +303,7 @@ describe("file browser guard patches", function()
 
     it("decorates Kindle Library like a regular folder view", function()
         local shown, saved_mode, reopened, updated, status_options, file_dialog_args
+        local update_calls = 0
         ZenSpec.replace("modules/menu/app_launcher/plugin_scan", {})
         ZenSpec.replace("common/ui/background", {
             applyToMenu = function(menu) menu.background_applied = true end,
@@ -377,6 +378,7 @@ describe("file browser guard patches", function()
             name = "kindle_library",
             _manager = manager,
             updateItems = function(_, page, no_resize)
+                update_calls = update_calls + 1
                 updated = { page, no_resize }
             end,
         }
@@ -392,6 +394,13 @@ describe("file browser guard patches", function()
         assert.is_true(menu:onMenuHold(book))
         assert.are.equal("/cache/book.epub", file_dialog_args.path)
         assert.is_true(file_dialog_args._zen_kindle_book)
+        assert.are.equal(1, #file_dialog_args._zen_extra_buttons)
+        assert.matches("Clear cache", file_dialog_args._zen_extra_buttons[1][1].text, 1, true)
+        file_dialog_args._zen_after_status_change()
+        assert.are.equal(2, update_calls)
+        assert.are.same({ 1, true }, updated)
+        assert.is_nil(reopened)
+
         file_dialog_args._zen_refresh()
         assert.are.equal(1, refreshed)
         file_dialog_args._zen_extra_buttons[1][1].callback()

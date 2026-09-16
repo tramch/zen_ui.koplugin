@@ -2117,6 +2117,12 @@ msgstr "Exakte ISBN-Übereinstimmung"
 msgid "Exclude CBZ/CBR files"
 msgstr "CBZ/CBR-Dateien ausschließen"
 
+#. Type: setting
+#. Context: text = _("Exclude from Home"),
+#: extras_settings.lua:115
+msgid "Exclude from Home"
+msgstr "Von der Startseite ausschließen"
+
 #. Type: button
 #. Context: text = _("Are you sure you want to exit KOReader?"), ok_text = _("Exit"), ok_callback = function()
 #: nav_button_model.lua:24 navbar.lua:330 quick_settings.lua:683 quick_settings.lua:687 menu_settings.lua:76 navbar_settings.lua:183

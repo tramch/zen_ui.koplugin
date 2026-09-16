@@ -30,6 +30,7 @@ local defaults = {
         update_auto_check = true,
     },
     rakuyomi = {
+        exclude_from_home = false,
         return_to_chapter_list_on_exit = false,
     },
     kindle = {

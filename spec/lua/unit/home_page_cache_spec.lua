@@ -179,6 +179,7 @@ describe("home data and book caches", function()
 
     after_each(function()
         _G.__ZEN_UI_LAST_READ_FILE = nil
+        _G.__ZEN_UI_RAKUYOMI = nil
     end)
 
     local function get_home_module(apply)
@@ -491,6 +492,56 @@ describe("home data and book caches", function()
 
         assert.are.equal("/storage/emulated/0/alpha.epub",
             provider:getFeaturedBook("recently_read", "default").path)
+    end)
+
+    it("includes Kindle history outside the configured library in Home widgets", function()
+        local kindle_path = "/kindle-cache/book.epub"
+        history_items[1].file = kindle_path
+        ZenSpec.replace("modules/filebrowser/patches/kindle_virtual_library", {
+            isBookPath = function(path) return path == kindle_path end,
+        })
+        ZenSpec.replace("libs/libkoreader-lfs", {
+            attributes = function(path)
+                if path ~= kindle_path then return { mode = "file", modification = 1 } end
+            end,
+        })
+
+        local Home = get_home_module(require("modules/filebrowser/patches/home_page"))
+        local provider = get_build_data_provider(Home)({ browser_cover_badges = {} }, {
+            rows = { order = { "strip" }, enabled = { strip = true } },
+            modules = { strip = {} },
+        })
+
+        assert.are.equal(kindle_path,
+            provider:getFeaturedBook("recently_read", "default").path)
+        assert.are.equal(kindle_path,
+            provider:getBooksForStrip("recently_read", 4, "default", "strip")[1].path)
+    end)
+
+    it("excludes Rakuyomi chapters from recent Home books when enabled", function()
+        history_items[1].file = "/library/chapter.cbz"
+        history_items[2] = { file = "/library/alpha.epub" }
+        _G.__ZEN_UI_RAKUYOMI = {
+            isChapterFile = function(path) return path == "/library/chapter.cbz" end,
+        }
+
+        local Home = get_home_module(require("modules/filebrowser/patches/home_page"))
+        local build_data_provider = get_build_data_provider(Home)
+        local dcfg = {
+            rows = { order = { "strip" }, enabled = { strip = true } },
+            modules = { featured = { default_source = { kind = "recent" } }, strip = {} },
+        }
+        local excluded = build_data_provider({
+            browser_cover_badges = {}, rakuyomi = { exclude_from_home = true },
+        }, dcfg)
+        assert.are.equal("/library/alpha.epub",
+            excluded:getFeaturedBook("recently_read", "default").path)
+        assert.are.equal("/library/alpha.epub",
+            excluded:getBooksForStrip("recently_read", 4, "default", "strip")[1].path)
+
+        local included = build_data_provider({ browser_cover_badges = {} }, dcfg)
+        assert.are.equal("/library/chapter.cbz",
+            included:getFeaturedBook("recently_read", "default").path)
     end)
 
     it("reuses matching Home stats across provider rebuilds", function()

@@ -342,8 +342,16 @@ local function explicit_paths()
     local coll = ReadCollection.coll and ReadCollection.coll[collection_name()] or {}
     for filepath, entry in pairs(coll) do
         local path = type(entry) == "table" and entry.file or filepath
-        if type(path) == "string" and paths.isInHomeDir(path)
-                and lfs.attributes(path, "mode") == "file" then
+        local in_library = type(path) == "string" and paths.isInHomeDir(path)
+        local is_kindle = false
+        if type(path) == "string" and not in_library then
+            local ok_kindle, Kindle = pcall(
+                require, "modules/filebrowser/patches/kindle_virtual_library")
+            is_kindle = ok_kindle and type(Kindle.isBookPath) == "function"
+                and Kindle.isBookPath(path)
+        end
+        if type(path) == "string" and (is_kindle
+                or in_library and lfs.attributes(path, "mode") == "file") then
             files[#files + 1] = path
         end
     end

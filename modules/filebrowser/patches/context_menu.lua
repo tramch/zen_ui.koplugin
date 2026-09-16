@@ -1952,7 +1952,7 @@ local function apply_context_menu()
             end
 
 
-            if is_file and not is_kindle_book then
+            if is_file then
                 local ReadCollection = require("readcollection")
 
                 if item._zen_collection_name then

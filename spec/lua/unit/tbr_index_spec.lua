@@ -315,6 +315,17 @@ describe("TBR path inventory", function()
         assert.are.equal(3, collection_writes)
     end)
 
+    it("keeps explicit Kindle books outside the configured library", function()
+        local kindle_path = "/kindle-cache/book.epub"
+        ZenSpec.replace("modules/filebrowser/patches/kindle_virtual_library", {
+            isBookPath = function(path) return path == kindle_path end,
+        })
+        local Index = require("common/tbr_index")
+
+        assert.is_true(Index.setExplicit(kindle_path, true))
+        assert.same({ kindle_path }, Index.getAll({ include_new = false }))
+    end)
+
     it("saves a shared manual order and refreshes its views", function()
         config.group_view = { include_new_in_tbr = true }
         add_book("/books/a.epub", "reading", 1)
