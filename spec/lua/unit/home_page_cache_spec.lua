@@ -203,6 +203,21 @@ describe("home data and book caches", function()
         error("build_data_provider upvalue not found")
     end
 
+    local function get_compute_row_heights(Home)
+        local build_home_content
+        for i = 1, 80 do
+            local name, value = debug.getupvalue(Home.showHomeView, i)
+            if not name then break end
+            if name == "build_home_content" then build_home_content = value; break end
+        end
+        for i = 1, 80 do
+            local name, value = debug.getupvalue(build_home_content, i)
+            if not name then break end
+            if name == "compute_row_heights" then return value end
+        end
+        error("compute_row_heights upvalue not found")
+    end
+
     local function get_request_home_repaint(Home)
         for i = 1, 80 do
             local name, value = debug.getupvalue(Home.showHomeView, i)
@@ -232,6 +247,43 @@ describe("home data and book caches", function()
         end
         error("home menu upvalue not found")
     end
+
+    it("keeps preset row heights on their original grids", function()
+        ZenSpec.replace("modules/filebrowser/patches/home/components/registry", {
+            layoutUnits = function(rows)
+                return #rows == 2 and { 4, 6 } or { 3.5, 1, 4, 1.5 }
+            end,
+            gridHeights = function(units)
+                if #units == 2 then
+                    assert.are.same({ 4, 6 }, units)
+                    return { 394, 596 }
+                end
+                assert.are.same({ 3.5, 1, 4, 1.5 }, units)
+                return { 344, 91, 394, 141 }
+            end,
+            get = function(id) return { id = id } end,
+            list = function() return {} end,
+            setRefreshCallback = function() end,
+        })
+        ZenSpec.unload("modules/filebrowser/patches/home_page")
+        local Home = get_home_module(require("modules/filebrowser/patches/home_page"))
+        local compute_row_heights = get_compute_row_heights(Home)
+        local rows = {
+            { id = "featured", preferredHeight = function() return 600 end },
+            { id = "strip", preferredHeight = function() return 600 end },
+        }
+        local bookshelf = compute_row_heights(rows, 1000, 10, 10, 600, {}, {}, {})
+        local default = compute_row_heights({
+            { id = "featured" },
+            { id = "stats_triplet" },
+            { id = "strip" },
+            { id = "quotes" },
+        }, 1000, 10, 10, 600, {}, {}, {})
+
+        assert.are.same({ 394, 596 }, { bookshelf[1].h, bookshelf[2].h })
+        assert.are.same({ 344, 91, 394, 141 },
+            { default[1].h, default[2].h, default[3].h, default[4].h })
+    end)
 
     it("focuses every strip control and activates it with OK or Enter", function()
         local Home = get_home_module(require("modules/filebrowser/patches/home_page"))
