@@ -363,6 +363,7 @@ function M._decorateLibraryView(menu, plugin)
 
     require("common/ui/background").applyToMenu(menu)
     local StandalonePage = require("modules/filebrowser/patches/standalone_page")
+    StandalonePage.enable_filemanager_dispatch(menu)
     StandalonePage.hide_page_arrow(menu)
     StandalonePage.suppress_page_info_tap(menu)
     local SharedState = require("common/shared_state")

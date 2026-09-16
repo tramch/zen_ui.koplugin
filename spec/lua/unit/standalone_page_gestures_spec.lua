@@ -227,6 +227,24 @@ describe("standalone page gestures", function()
         assert.are.same({ "southeast" }, swipes)
     end)
 
+    it("forwards unhandled dispatcher actions to the File Manager", function()
+        local StandalonePage = require("modules/filebrowser/patches/standalone_page")
+        local calls = 0
+        local menu = { handleEvent = function() return false end }
+        FileManager.instance = {
+            handleEvent = function(_self, event)
+                if event.handler == "onToggleZenMode" then
+                    calls = calls + 1
+                    return true
+                end
+            end,
+        }
+        StandalonePage.enable_filemanager_dispatch(menu)
+
+        assert.is_true(menu:handleEvent({ handler = "onToggleZenMode" }))
+        assert.are.equal(1, calls)
+    end)
+
     it("honors the touch-input filter for forwarded gestures", function()
         local StandalonePage = require("modules/filebrowser/patches/standalone_page")
         local gesture_calls = {}

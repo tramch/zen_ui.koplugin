@@ -309,6 +309,7 @@ describe("file browser guard patches", function()
             applyToMenu = function(menu) menu.background_applied = true end,
         })
         ZenSpec.replace("modules/filebrowser/patches/standalone_page", {
+            enable_filemanager_dispatch = function(menu) menu.fm_dispatch_enabled = true end,
             hide_page_arrow = function(menu) menu.arrow_hidden = true end,
             suppress_page_info_tap = function(menu) menu.page_info_suppressed = true end,
             apply_status_row = function(_, options) status_options = options end,
@@ -385,6 +386,7 @@ describe("file browser guard patches", function()
 
         assert.is_true(Kindle._decorateLibraryView(menu, {}))
         assert.is_true(menu.background_applied)
+        assert.is_true(menu.fm_dispatch_enabled)
         assert.is_false(menu._do_center_partial_rows)
         assert.are.same({ 1, true }, updated)
         assert.are.equal("Kindle Library", status_options.label)
