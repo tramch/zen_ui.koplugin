@@ -851,6 +851,7 @@ local function apply_context_menu()
             local file               = item.path
             local is_file            = item.is_file
             local is_kindle_book     = item._zen_kindle_book == true
+            local is_kindle_processed = item._zen_kindle_processed == true
             local is_not_parent_folder = not item.is_go_up
             local is_home_dir = (not is_file) and paths.isHomeRoot(file)
             -- Only the primary library root uses global sort/display; additional
@@ -1665,7 +1666,9 @@ local function apply_context_menu()
                         },
                     },
                 }
-                if not item._zen_collection_name and not item._zen_disable_select then
+                if is_kindle_processed then edit_buttons = {} end
+                if not is_kindle_processed and not item._zen_collection_name
+                        and not item._zen_disable_select then
                     table.insert(edit_buttons, 1, {
                         {
                             text = "\u{F0489}  " .. _("Select"),
@@ -1738,7 +1741,7 @@ local function apply_context_menu()
                     and type(zen_plugin.config) == "table"
                     and type(zen_plugin.config.context_menu) == "table"
                     and zen_plugin.config.context_menu.allow_delete == true
-                if allow_delete then
+                if allow_delete and not is_kindle_processed then
                     table.insert(edit_buttons, {
                         {
                             text = "\u{F0156}  " .. _("Delete"),
@@ -2468,7 +2471,7 @@ local function apply_context_menu()
                 })
             end
 
-            if not is_virtual_folder and not is_kindle_book then
+            if not is_virtual_folder and (not is_kindle_book or is_kindle_processed) then
                 table.insert(buttons, {
                     {
                         text = "\u{F090C}  " .. _("Edit") .. "  " .. submenu_arrow,

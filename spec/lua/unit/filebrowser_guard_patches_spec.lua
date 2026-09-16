@@ -353,6 +353,10 @@ describe("file browser guard patches", function()
                 getBook = function(_, key)
                     if key == catalog_book.id then return catalog_book end
                 end,
+                isBookPrepared = function(_, book)
+                    assert.are.equal(catalog_book, book)
+                    return true
+                end,
                 refresh = function(_, force)
                     assert.is_true(force)
                     refreshed = refreshed + 1
@@ -396,6 +400,7 @@ describe("file browser guard patches", function()
         assert.is_true(menu:onMenuHold(book))
         assert.are.equal("/cache/book.epub", file_dialog_args.path)
         assert.is_true(file_dialog_args._zen_kindle_book)
+        assert.is_true(file_dialog_args._zen_kindle_processed)
         assert.are.equal(1, #file_dialog_args._zen_extra_buttons)
         assert.matches("Clear cache", file_dialog_args._zen_extra_buttons[1][1].text, 1, true)
         file_dialog_args._zen_after_status_change()

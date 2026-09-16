@@ -287,6 +287,11 @@ function M.showBookContextMenu(menu, item, after_change)
     if not ok_book or type(book) ~= "table" then return false end
 
     local cache_manager = manager and manager.cache_manager
+    local is_processed = false
+    if book.open_mode ~= "direct" and type(library.isBookPrepared) == "function" then
+        local ok, prepared = pcall(library.isBookPrepared, library, book)
+        is_processed = ok and prepared == true
+    end
     local file = book.source_path or item.file or item.path
     if book.open_mode ~= "direct" and cache_manager
             and type(cache_manager.getCachePaths) == "function" then
@@ -344,6 +349,7 @@ function M.showBookContextMenu(menu, item, after_change)
         _zen_home_context = true,
         _zen_disable_select = true,
         _zen_kindle_book = true,
+        _zen_kindle_processed = is_processed,
         _zen_extra_buttons = { clear_cache },
         _zen_refresh = function()
             if type(library.refresh) == "function" then library:refresh(true) end

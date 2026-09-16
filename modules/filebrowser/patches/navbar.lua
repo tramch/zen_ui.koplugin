@@ -1186,8 +1186,11 @@ local function apply_navbar()
             local direct_archive = tab_id == "archive" and paths.isArchiveRoot(folder_path)
             fc._zen_direct_archive_root = direct_archive and archive_root or nil
             local current_path = normalizeFolderPath(fc.path)
+            local archive_dirty = tab_id == "archive"
+                and rawget(_G, "__ZEN_UI_ARCHIVE_LISTING_DIRTY") == true
             if current_path == folder_path then
-                if listing_deferred and type(fc.refreshPath) == "function" then
+                if (listing_deferred or archive_dirty)
+                        and type(fc.refreshPath) == "function" then
                     fc:refreshPath()
                 elseif type(fc.onGotoPage) == "function" then
                     fc:onGotoPage(1)
@@ -1197,6 +1200,7 @@ local function apply_navbar()
                 fc._zen_opening_archive_root = direct_archive or nil
                 fc:changeToPath(folder_path)
             end
+            if tab_id == "archive" then _G.__ZEN_UI_ARCHIVE_LISTING_DIRTY = nil end
         end
         if was_hidden then
             local original_set_dirty = UIManager.setDirty

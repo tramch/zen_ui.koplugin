@@ -650,10 +650,12 @@ describe("folder cover context-menu integration", function()
         local shown = {}
         local details_options
         local editor_options
+        local editor_file
         local plugin_args
         local plugin_action_called = false
         local refresh_action_built = false
         local refreshed = {}
+        local deleted_bookinfo
         local FileChooser = {
             show_filter = {},
             show_file = function() return true end,
@@ -691,7 +693,7 @@ describe("folder cover context-menu integration", function()
         }
         local bookinfo = {
             showFromBookDetails = function(_self, file, _props, options)
-                assert.are.equal("/library/book.epub", file)
+                editor_file = file
                 editor_options = options
             end,
         }
@@ -725,6 +727,7 @@ describe("folder cover context-menu integration", function()
                 getBookInfo = function()
                     return { title = "Book", authors = "Author" }
                 end,
+                deleteBookInfo = function(_, file) deleted_bookinfo = file end,
             },
             BookDetails = {
                 showFile = function(_file, options) details_options = options end,
@@ -734,6 +737,7 @@ describe("folder cover context-menu integration", function()
                     refreshed[#refreshed + 1] = file
                 end,
             },
+            SharedState = { get = function() end },
             ArchiveActions = {
                 contextRow = function()
                     return {{ text = "\u{F19C}  Archive" }}
@@ -805,6 +809,7 @@ describe("folder cover context-menu integration", function()
             1, true)
         assert.matches("Delete", edit_dialog.buttons[#edit_dialog.buttons][1].text, 1, true)
         assert(find_button(edit_dialog, "Edit metadata")).callback()
+        assert.are.equal("/library/book.epub", editor_file)
         assert.is_table(editor_options)
         editor_options.on_renamed("/library/renamed.epub")
         editor_options.on_saved("/library/renamed.epub")
@@ -817,10 +822,19 @@ describe("folder cover context-menu integration", function()
 
         local kindle_refreshes = 0
         file_chooser:showFileDialog({
+            path = "/mnt/us/documents/kindle.kfx",
+            is_file = true,
+            _zen_home_context = true,
+            _zen_kindle_book = true,
+        })
+        assert.is_nil(find_button(shown[#shown], "Edit"))
+
+        file_chooser:showFileDialog({
             path = "/cache/kindle.epub",
             is_file = true,
             _zen_home_context = true,
             _zen_kindle_book = true,
+            _zen_kindle_processed = true,
             _zen_refresh = function() kindle_refreshes = kindle_refreshes + 1 end,
             _zen_extra_buttons = { {{ text = "Clear cache" }} },
         })
@@ -829,7 +843,20 @@ describe("folder cover context-menu integration", function()
         assert.is_truthy(find_button(kindle_dialog, "Read status"))
         assert.is_truthy(find_button(kindle_dialog, "Clear cache"))
         assert.is_truthy(find_button(kindle_dialog, "Add to collection"))
-        assert.is_nil(find_button(kindle_dialog, "Edit"))
+        assert(find_button(kindle_dialog, "Edit")).callback()
+        local kindle_edit_dialog = shown[#shown]
+        assert.are.equal(2, #kindle_edit_dialog.buttons)
+        assert.is_nil(find_button(kindle_edit_dialog, "Cut"))
+        assert.is_nil(find_button(kindle_edit_dialog, "Copy"))
+        assert.is_nil(find_button(kindle_edit_dialog, "Paste"))
+        assert.is_nil(find_button(kindle_edit_dialog, "Delete"))
+        assert(find_button(kindle_edit_dialog, "Refresh")).callback()
+        assert.are.equal("/cache/kindle.epub", deleted_bookinfo)
+        assert(find_button(kindle_edit_dialog, "Edit metadata")).callback()
+        assert.are.equal("/cache/kindle.epub", editor_file)
+        assert.is_table(editor_options)
+        editor_options.on_saved("/cache/kindle.epub")
+        assert.are.equal("/cache/kindle.epub", refreshed[#refreshed])
         find_button(kindle_dialog, "Refresh").callback()
         assert.are.equal(1, kindle_refreshes)
     end)

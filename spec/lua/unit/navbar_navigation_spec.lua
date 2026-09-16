@@ -321,6 +321,7 @@ describe("file browser navbar navigation", function()
             "__ZEN_UI_OPEN_TARGET_TAB", "__ZEN_UI_FORCE_DEFAULT_LIBRARY_TAB",
             "__ZEN_UI_OPEN_TARGET_FOLDER", "__ZEN_UI_OPEN_TARGET_TAG",
             "__ZEN_UI_HIDDEN_HOME_BOOTSTRAP", "__ZEN_UI_DEFER_FILEMANAGER_LISTING",
+            "__ZEN_UI_ARCHIVE_LISTING_DIRTY",
         }) do
             _G[name] = nil
         end
@@ -1242,6 +1243,22 @@ describe("file browser navbar navigation", function()
         assert.are.same({ "books:/archive" }, calls)
         assert.are.equal("Archive", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
         assert.are.equal("/archive", FileManager.instance.file_chooser._zen_direct_archive_root)
+    end)
+
+    it("rescans a retained Archive listing once after an archive change", function()
+        local fm = make_instance()
+        local fc = fm.file_chooser
+        fc.path = "/archive"
+        fc.refreshPath = function() calls[#calls + 1] = "refresh_archive" end
+        fc.onGotoPage = function() calls[#calls + 1] = "redraw_archive" end
+        _G.__ZEN_UI_ARCHIVE_LISTING_DIRTY = true
+        calls = {}
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("archive"))
+        assert.is_nil(_G.__ZEN_UI_ARCHIVE_LISTING_DIRTY)
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("archive"))
+
+        assert.are.same({ "refresh_archive", "redraw_archive" }, calls)
     end)
 
     it("resumes deferred covers when Archive replaces a visible Home startup", function()

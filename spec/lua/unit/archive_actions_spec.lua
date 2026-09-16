@@ -102,6 +102,7 @@ describe("archive actions", function()
 
     after_each(function()
         _G.G_reader_settings = nil
+        _G.__ZEN_UI_ARCHIVE_LISTING_DIRTY = nil
         _G.__ZEN_UI_REFRESH_SETTINGS = nil
     end)
 
@@ -130,6 +131,7 @@ describe("archive actions", function()
         assert.are.equal(
             "/library/",
             saved.library_archive_original_dirs["/archive/book.epub"])
+        assert.is_true(_G.__ZEN_UI_ARCHIVE_LISTING_DIRTY)
     end)
 
     it("saves a newly chosen archive and requests a live settings refresh", function()
@@ -176,6 +178,7 @@ describe("archive actions", function()
             { "/archive/book.epub", "/library/book.epub" },
         }, locations)
         assert.is_nil(saved.library_archive_original_dirs["/archive/book.epub"])
+        assert.is_true(_G.__ZEN_UI_ARCHIVE_LISTING_DIRTY)
     end)
 
     it("archives an end-of-book EPUB after Reader closes and before navigation", function()
@@ -223,6 +226,7 @@ describe("archive actions", function()
 
         assert.are.same({ "complete", "flush", "close", "move", "open" }, order)
         assert.are.same({ { "/library/book.epub", "/archive/" } }, moves)
+        assert.is_true(_G.__ZEN_UI_ARCHIVE_LISTING_DIRTY)
     end)
 
     it("returns to the source folder without archiving metadata if the move fails", function()
@@ -252,5 +256,6 @@ describe("archive actions", function()
         assert.are.equal("Failed to move book to archive.", shown[#shown].text)
         assert.are.same({}, locations)
         assert.is_nil(saved.library_archive_original_dirs["/archive/book.epub"])
+        assert.is_nil(_G.__ZEN_UI_ARCHIVE_LISTING_DIRTY)
     end)
 end)

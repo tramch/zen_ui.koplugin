@@ -59,6 +59,10 @@ local function update_location(source, destination)
     DocSettings.updateLocation(source, destination, false)
 end
 
+local function invalidate_archive_listing()
+    _G.__ZEN_UI_ARCHIVE_LISTING_DIRTY = true
+end
+
 local function close_file_dialogs(fm)
     local closed = {}
     local function close(dialog)
@@ -137,6 +141,7 @@ local function move_book(fm, file, destination_dir, original_dirs)
     end
 
     update_location(file, destination)
+    invalidate_archive_listing()
     local settings = LuaSettings:open(settings_path)
     settings:saveSetting(original_dirs_key, original_dirs)
     settings:flush()
@@ -254,6 +259,7 @@ function M.markCompleteAndArchive(reader_status, status_widget)
                 local message = _("Failed to move book to archive.")
                 if FileManager:moveFile(file, archive) then
                     update_location(file, destination)
+                    invalidate_archive_listing()
                     original_dirs[destination] = source_dir
                     settings:saveSetting(original_dirs_key, original_dirs)
                     settings:flush()
