@@ -1,4 +1,4 @@
--- Zen UI OPDS browser enhancements:
+-- ZenOS OPDS browser enhancements:
 --   - Back chevron on left title button (closes at root, navigates back in catalog)
 --   - Hamburger menu on right title button
 --   - Footer return arrow hidden (navigation via title buttons)
@@ -32,11 +32,28 @@ local function apply_opds()
     local UIManager       = require("ui/uimanager")
     local VGroup          = require("ui/widget/verticalgroup")
     local VSpan           = require("ui/widget/verticalspan")
+    local ZenIconButton   = require("common/ui/zen_icon_button")
+    local ZenModalClose   = require("common/ui/zen_modal_close")
     local logger          = require("common/zen_logger").new("opds")
     local Device          = require("device")
     local OPDSParser      = require("opdsparser")
     local CoverUtils      = require("common/cover_utils")
+    local icons           = require("common/inline_icon_map")
+    local lfs             = require("libs/libkoreader-lfs")
+    local utils           = require("common/utils")
     local Screen          = Device.screen
+
+    local _icons_dir
+    do
+        local root = require("common/plugin_root")
+        if root then _icons_dir = root .. "/icons/" end
+    end
+    local header_icon_paths = {
+        back = utils.resolveLocalIcon(_icons_dir, "tab_left"),
+        search = utils.resolveLocalIcon(_icons_dir, "quick_search"),
+        menu = utils.resolveLocalIcon(_icons_dir, "more_vertical"),
+        close = utils.resolveLocalIcon(_icons_dir, "close"),
+    }
 
     -- Cover cache: [url] → { bb } | { failed = true }  (session-scoped)
     local _cover_cache = {}
@@ -166,13 +183,109 @@ local function apply_opds()
     local _corner_radius = Screen:scaleBySize(8)
     local _plugin = rawget(_G, "__ZEN_UI_PLUGIN")
 
-    local function get_opds_display_mode()
+    local function get_opds_config()
         local plug = _plugin or rawget(_G, "__ZEN_UI_PLUGIN")
-        local mode = plug and type(plug.config) == "table"
-            and type(plug.config.opds) == "table"
-            and plug.config.opds.display_mode
+        return plug and type(plug.config) == "table"
+            and type(plug.config.opds) == "table" and plug.config.opds or nil
+    end
+
+    local function get_opds_display_mode()
+        local cfg = get_opds_config()
+        local mode = cfg and cfg.display_mode
         if mode == "list" or mode == "classic" then return mode end
         return "mosaic"
+    end
+
+    local function get_opds_default_url()
+        local cfg = get_opds_config()
+        local url = cfg and cfg.default_url
+        return type(url) == "string" and url ~= "" and url or nil
+    end
+
+    local function set_opds_default_url(url)
+        local plug = _plugin or rawget(_G, "__ZEN_UI_PLUGIN")
+        if not (plug and type(plug.config) == "table") then return end
+        if type(plug.config.opds) ~= "table" then plug.config.opds = {} end
+        plug.config.opds.default_url = type(url) == "string" and url or ""
+        if type(plug.saveConfig) == "function" then plug:saveConfig() end
+    end
+
+    local function downloaded_names(create)
+        local cfg = get_opds_config()
+        if not cfg then return end
+        if type(cfg.downloaded) ~= "table" then
+            if not create then return end
+            cfg.downloaded = {}
+        end
+        return cfg.downloaded
+    end
+
+    local function remember_downloaded(identity)
+        if type(identity) ~= "string" or identity == "" then return false end
+        local names = downloaded_names(true)
+        if not names or names[identity] then return false end
+        names[identity] = true
+        return true
+    end
+
+    local function save_downloaded_names()
+        local plug = _plugin or rawget(_G, "__ZEN_UI_PLUGIN")
+        if plug and type(plug.saveConfig) == "function" then plug:saveConfig() end
+    end
+
+    local function library_filenames(browser)
+        if browser._zen_opds_library_filenames then
+            return browser._zen_opds_library_filenames
+        end
+        local filenames = {}
+        browser._zen_opds_library_filenames = filenames
+        local ok_index, index = pcall(require, "common/tbr_index")
+        if not ok_index or type(index.getInventoryPaths) ~= "function" then return filenames end
+        for _i, path in ipairs(index.getInventoryPaths()) do
+            local name = type(path) == "string" and path:match("([^/]+)$")
+            if name then filenames[name] = true end
+        end
+        return filenames
+    end
+
+    local function downloaded_state(browser, item)
+        if not (item.acquisitions and #item.acquisitions > 0) then return false end
+        local filename, identity = browser:getFileName(item)
+        identity = identity or filename
+        local names = downloaded_names()
+        if identity and names and names[identity] then return true, identity end
+        -- Raw server filenames may require a network request to resolve.
+        if not filename then return false, identity end
+        for _i, acquisition in ipairs(item.acquisitions) do
+            if not acquisition.count and acquisition.type ~= "borrow"
+                    and type(acquisition.href) == "string" then
+                local filetype = OPDSBrowser.getFiletype(acquisition)
+                if filetype then
+                    local path = browser:getLocalDownloadPath(
+                        filename, filetype, acquisition.href)
+                    local attr = lfs.attributes(path)
+                    if attr and attr.mode == "file" and (attr.size or 0) > 0 then
+                        return true, identity, true
+                    end
+                    local basename = path:match("([^/]+)$")
+                    if basename and library_filenames(browser)[basename] then
+                        return true, identity, true
+                    end
+                end
+            end
+        end
+        return false, identity
+    end
+
+    local function tag_downloaded_items(browser, item_table)
+        local changed = false
+        for _i, item in ipairs(item_table or {}) do
+            local downloaded, identity, discovered = downloaded_state(browser, item)
+            item._zen_opds_downloaded = downloaded
+            if discovered and remember_downloaded(identity) then changed = true end
+        end
+        if changed then save_downloaded_names() end
+        return item_table
     end
 
     -- Mosaic title strip: read at apply time; mirrors mosaic_title_strip.lua logic.
@@ -225,13 +338,14 @@ local function apply_opds()
         end
     end
 
-    local function paintCornerBorderArcs(bb, tx, ty, tw, th, r, color)
+    local function paintCornerBorderArcs(bb, tx, ty, tw, th, r, bsz, color)
+        local r_inner = r - bsz
         for j = 0, r - 1 do
             for c = 0, r - 1 do
                 local dx   = r - c - 0.5
                 local dy   = r - j - 0.5
                 local dist = math.sqrt(dx * dx + dy * dy)
-                if dist >= r - 1 and dist <= r then
+                if dist >= r_inner and dist <= r then
                     bb:paintRect(tx + c,          ty + j,           1, 1, color)
                     bb:paintRect(tx + tw - 1 - c, ty + j,           1, 1, color)
                     bb:paintRect(tx + c,          ty + th - 1 - j,  1, 1, color)
@@ -240,10 +354,12 @@ local function apply_opds()
             end
         end
         -- straight edges connecting the corner arcs
-        bb:paintRect(tx + r,      ty,           tw - 2*r, 1, color)  -- top
-        bb:paintRect(tx + r,      ty + th - 1,  tw - 2*r, 1, color)  -- bottom
-        bb:paintRect(tx,          ty + r,       1, th - 2*r, color)  -- left
-        bb:paintRect(tx + tw - 1, ty + r,       1, th - 2*r, color)  -- right
+        for i = 0, bsz - 1 do
+            bb:paintRect(tx + r, ty + i, tw - 2 * r, 1, color)
+            bb:paintRect(tx + r, ty + th - 1 - i, tw - 2 * r, 1, color)
+            bb:paintRect(tx + i, ty + r, 1, th - 2 * r, color)
+            bb:paintRect(tx + tw - 1 - i, ty + r, 1, th - 2 * r, color)
+        end
     end
 
     -- Proportional font size matching browser_list_item_layout's _fontSize formula.
@@ -254,7 +370,24 @@ local function apply_opds()
         return fs
     end
 
-    local COVER_BORDER = Size.border.thin
+    local COVER_BORDER = CoverUtils.BORDER_SIZE
+
+    local function cover_border_color(entry)
+        if entry._zen_opds_downloaded then
+            return Blitbuffer.COLOR_GRAY_6 or Blitbuffer.COLOR_GRAY
+        end
+        return Blitbuffer.COLOR_BLACK
+    end
+
+    local function dim_downloaded_cover(bb, entry, x, y, width, height)
+        if not entry._zen_opds_downloaded then return end
+        local inner_w = width - 2 * COVER_BORDER
+        local inner_h = height - 2 * COVER_BORDER
+        if inner_w > 0 and inner_h > 0 then
+            bb:lightenRect(x + COVER_BORDER, y + COVER_BORDER,
+                inner_w, inner_h, 0.4)
+        end
+    end
 
     local function build_cover_widget(entry, cover_w, cover_h)
         if entry._zen_opds_folder then
@@ -263,17 +396,43 @@ local function apply_opds()
             return CoverUtils.drawNoImage(
                 entry.title or entry.text or "", inner_w, inner_h, COVER_BORDER)
         elseif entry.cover_bb then
-            return ImageWidget:new{
-                image = entry.cover_bb,
-                image_disposable = false,
+            local inner_w = math.max(1, cover_w - 2 * COVER_BORDER)
+            local inner_h = math.max(1, cover_h - 2 * COVER_BORDER)
+            return FrameContainer:new{
                 width = cover_w,
                 height = cover_h,
+                padding = 0,
+                bordersize = COVER_BORDER,
+                color = cover_border_color(entry),
+                background = Blitbuffer.COLOR_LIGHT_GRAY,
+                CenterContainer:new{
+                    dimen = Geom:new{ w = inner_w, h = inner_h },
+                    ImageWidget:new{
+                        image = entry.cover_bb,
+                        image_disposable = false,
+                        width = inner_w,
+                        height = inner_h,
+                    },
+                },
             }
         end
 
-        return LineWidget:new{
-            dimen = Geom:new{ w = cover_w, h = cover_h },
+        local inner_w = math.max(1, cover_w - 2 * COVER_BORDER)
+        local inner_h = math.max(1, cover_h - 2 * COVER_BORDER)
+        return FrameContainer:new{
+            width = cover_w,
+            height = cover_h,
+            padding = 0,
+            bordersize = COVER_BORDER,
+            color = cover_border_color(entry),
             background = Blitbuffer.COLOR_LIGHT_GRAY,
+            CenterContainer:new{
+                dimen = Geom:new{ w = inner_w, h = inner_h },
+                LineWidget:new{
+                    dimen = Geom:new{ w = inner_w, h = inner_h },
+                    background = Blitbuffer.COLOR_LIGHT_GRAY,
+                },
+            },
         }
     end
 
@@ -293,6 +452,7 @@ local function apply_opds()
         local text_w = self.item_w - self.cover_w - PAD * 3
         local text_h = self.item_h - PAD_V * 2
         local cover_inner = build_cover_widget(entry, self.cover_w, self.cover_h)
+        self._zen_cover_widget = cover_inner
         local text_group = VGroup:new{ align = "left" }
         local title = entry.title or entry.text or ""
         local fs_title = opds_fontSize(18, 21, self.item_h)
@@ -347,11 +507,17 @@ local function apply_opds()
     function OPDSItem:paintTo(bb, x, y)
         self._screen_x = x
         self._screen_y = y
+        self._zen_cover_widget.color = cover_border_color(self.entry)
         InputContainer.paintTo(self, bb, x, y)
+        local cover_dimen = self._zen_cover_widget.dimen
+        local cover_x = cover_dimen and cover_dimen.x or x + PAD
+        local cover_y = cover_dimen and cover_dimen.y or y + PAD_V
+        dim_downloaded_cover(bb, self.entry, cover_x, cover_y,
+            self.cover_w, self.cover_h)
         if not rounded_corners_enabled() then return end
-        -- cover is at PAD from left, PAD_V from top
-        paintCornerMasks(bb, x + PAD, y + PAD_V, self.cover_w, self.cover_h, _corner_radius)
-        paintCornerBorderArcs(bb, x + PAD, y + PAD_V, self.cover_w, self.cover_h, _corner_radius, Blitbuffer.COLOR_BLACK)
+        paintCornerMasks(bb, cover_x, cover_y, self.cover_w, self.cover_h, _corner_radius)
+        paintCornerBorderArcs(bb, cover_x, cover_y, self.cover_w, self.cover_h,
+            _corner_radius, COVER_BORDER, cover_border_color(self.entry))
     end
 
     function OPDSItem:update()
@@ -404,6 +570,7 @@ local function apply_opds()
         local entry = self.entry
         local cover_area_h = self.cell_h - self.strip_h
         local cover_inner = build_cover_widget(entry, self.cover_w, self.cover_h)
+        self._zen_cover_widget = cover_inner
         local inner
         if self.strip_h > 0 then
             local TITLE_FONT  = 16
@@ -464,14 +631,17 @@ local function apply_opds()
     function OPDSMosaicItem:paintTo(bb, x, y)
         self._screen_x = x
         self._screen_y = y
+        self._zen_cover_widget.color = cover_border_color(self.entry)
         InputContainer.paintTo(self, bb, x, y)
-        if not rounded_corners_enabled() then return end
-        -- cover is centered in the cover area (above the strip)
         local cover_area_h = self.cell_h - self.strip_h
         local cx = x + math.floor((self.cell_w - self.cover_w) / 2)
         local cy = y + math.floor((cover_area_h - self.cover_h) / 2)
+        dim_downloaded_cover(bb, self.entry, cx, cy, self.cover_w, self.cover_h)
+        if not rounded_corners_enabled() then return end
+        -- cover is centered in the cover area (above the strip)
         paintCornerMasks(bb, cx, cy, self.cover_w, self.cover_h, _corner_radius)
-        paintCornerBorderArcs(bb, cx, cy, self.cover_w, self.cover_h, _corner_radius, Blitbuffer.COLOR_BLACK)
+        paintCornerBorderArcs(bb, cx, cy, self.cover_w, self.cover_h,
+            _corner_radius, COVER_BORDER, cover_border_color(self.entry))
     end
 
     function OPDSMosaicItem:update()
@@ -508,8 +678,7 @@ local function apply_opds()
     -- Cover-aware updateItems; supports mosaic grid and list layouts matched to library mode.
     -- The root catalog list (paths empty) always uses a fixed list with placeholder covers.
     function OPDSBrowser:updateItems(select_number, no_recalculate_dimen)
-        local _ratio_str = G_reader_settings and G_reader_settings:readSetting("uniform_cover_ratio") or "2:3"
-        local _cover_ratio = _ratio_str == "3:4" and 3/4 or 2/3
+        local _cover_ratio = CoverUtils.getRatio()
         local display_mode = get_opds_display_mode()
         if display_mode == "classic" then
             if self._zen_halt then self._zen_halt(); self._zen_halt = nil end
@@ -796,18 +965,141 @@ local function apply_opds()
         end
     end
 
-    local function shrink_title_button_bottom(button)
-        if not button or type(button.update) ~= "function" then return end
-        button.padding_bottom = 0
-        button:update()
+    local function remove_widget(group, widget)
+        if not widget then return end
+        for i = #group, 1, -1 do
+            if rawequal(group[i], widget) then
+                table.remove(group, i)
+                return
+            end
+        end
+    end
+
+    local function remove_header_from_focus(browser, buttons)
+        if not (browser.layout and buttons) then return end
+        local targets = {}
+        for _i, button in ipairs(buttons) do
+            if button then targets[button] = true end
+        end
+        for y = #browser.layout, 1, -1 do
+            local row = browser.layout[y]
+            for x = #row, 1, -1 do
+                if targets[row[x]] then table.remove(row, x) end
+            end
+            if #row == 0 then
+                table.remove(browser.layout, y)
+                if browser.selected and y < browser.selected.y then
+                    browser.selected.y = browser.selected.y - 1
+                end
+            end
+        end
+    end
+
+    local function merge_header_into_focus(browser)
+        local buttons = browser._zen_opds_header_buttons
+        if not (browser.layout and buttons and #buttons > 0) then return end
+        table.insert(browser.layout, 1, buttons)
+        if browser.selected then browser.selected.y = browser.selected.y + 1 end
+    end
+
+    local function make_header_button(browser, file, callback, focus_id, values)
+        values = values or {}
+        local button = ZenIconButton:new{
+            file = file,
+            width = values.width,
+            height = values.height,
+            padding = values.padding,
+            padding_bottom = 0,
+            overlap_align = values.overlap_align,
+            overlap_offset = values.overlap_offset,
+            allow_flash = false,
+            show_parent = browser.show_parent or browser,
+            callback = callback,
+        }
+        button._zen_opds_focus_id = focus_id
+        return button
+    end
+
+    local orig_mergeTitleBarIntoLayout = OPDSBrowser.mergeTitleBarIntoLayout
+    function OPDSBrowser:mergeTitleBarIntoLayout()
+        if not self._zen_opds_header_buttons then
+            return orig_mergeTitleBarIntoLayout(self)
+        end
+        merge_header_into_focus(self)
+    end
+
+    local function install_header_buttons(browser)
+        local title_bar = browser.title_bar
+        if not title_bar then return end
+
+        local old_buttons = browser._zen_opds_header_buttons or {}
+        old_buttons[#old_buttons + 1] = title_bar.left_button
+        old_buttons[#old_buttons + 1] = title_bar.right_button
+        remove_header_from_focus(browser, old_buttons)
+
+        local old_left = title_bar.left_button
+        local old_right = title_bar.right_button
+        local icon_size = (old_right and old_right.width) or (old_left and old_left.width)
+        local padding = title_bar.button_padding or (old_right and old_right.padding) or 0
+        if not icon_size then return end
+        local slot_width = icon_size + 2 * padding
+
+        if not title_bar._zen_opds_title_h_padding then
+            title_bar._zen_opds_title_h_padding = title_bar.title_h_padding
+        end
+        title_bar.title_h_padding = title_bar._zen_opds_title_h_padding + slot_width
+        -- TitleBar expects stock names; the visible ZenIconButtons use absolute files.
+        title_bar.left_icon = "chevron.left"
+        title_bar.left_icon_tap_callback = function() return browser:onLeftButtonTap() end
+        title_bar.left_icon_allow_flash = false
+        title_bar.right_icon = "close"
+        title_bar.right_icon_tap_callback = function() return browser:onCloseAllMenus() end
+        title_bar.right_icon_allow_flash = false
+        title_bar:clear()
+        title_bar:init()
+
+        local generated_left = title_bar.left_button
+        local generated_right = title_bar.right_button
+        remove_widget(title_bar, generated_left)
+        remove_widget(title_bar, generated_right)
+
+        local back_button = make_header_button(
+            browser, header_icon_paths.back,
+            function() return browser:onLeftButtonTap() end,
+            "back", { width = icon_size, height = icon_size, padding = padding, overlap_align = "left" }
+        )
+        local in_catalog = #browser.paths > 0
+        local action_is_search = in_catalog and browser.search_url ~= nil
+        local action_button = make_header_button(
+            browser, action_is_search and header_icon_paths.search or header_icon_paths.menu,
+            function() return activate_right_button(browser) end,
+            action_is_search and "search" or "menu", {
+                width = icon_size,
+                height = icon_size,
+                padding = padding,
+                overlap_offset = { title_bar.width - 2 * slot_width, 0 },
+            }
+        )
+        local close_button = make_header_button(
+            browser, header_icon_paths.close,
+            function() return browser:onCloseAllMenus() end,
+            "close", { width = icon_size, height = icon_size, padding = padding, overlap_align = "right" }
+        )
+
+        if generated_left and type(generated_left.free) == "function" then generated_left:free() end
+        if generated_right and type(generated_right.free) == "function" then generated_right:free() end
+        title_bar.left_button = back_button
+        title_bar.right_button = close_button
+        title_bar._zen_opds_action_button = action_button
+        table.insert(title_bar, back_button)
+        table.insert(title_bar, action_button)
+        table.insert(title_bar, close_button)
+        browser._zen_opds_header_buttons = { back_button, action_button, close_button }
+        merge_header_into_focus(browser)
     end
 
     local function fix_buttons(browser)
         browser._zen_opds_browser = true
-        if browser.title_bar then
-            browser.title_bar:setLeftIcon("chevron.left")
-            shrink_title_button_bottom(browser.title_bar.left_button)
-        end
         browser.onLeftButtonTap = function()
             if #browser.paths > 0 then
                 browser:onReturn()
@@ -819,23 +1111,12 @@ local function apply_opds()
                 UIManager:close(browser)
             end
         end
-        if browser.title_bar and browser.title_bar.right_button then
-            -- Search icon when inside a searchable catalog; hamburger otherwise.
-            local in_catalog = #browser.paths > 0
-            local has_search = browser.search_url ~= nil
-            local right_icon = (in_catalog and has_search) and "appbar.search" or "appbar.menu"
-            browser.title_bar:setRightIcon(right_icon)
-            shrink_title_button_bottom(browser.title_bar.right_button)
-            browser.title_bar.right_button.callback = function()
-                activate_right_button(browser)
-            end
-        end
+        install_header_buttons(browser)
 
         if Device:hasKeys() then
             browser.key_events = browser.key_events or {}
-            -- Stock Menu binds the physical Menu key to LeftButtonTap.  Zen UI
-            -- moves OPDS navigation/back to the left button and the OPDS menu
-            -- to the right button, so override that inherited binding here.
+            -- Stock Menu binds the physical Menu key to LeftButtonTap.  ZenOS
+            -- keeps navigation on Back and routes Menu to the header action.
             browser.key_events.LeftButtonTap = {
                 { "Menu" },
                 event = "ZenOPDSMenu",
@@ -844,11 +1125,28 @@ local function apply_opds()
                 { "Menu" },
                 event = "ZenOPDSMenu",
             }
+            -- Physical Home button: close the OPDS browser entirely (regardless
+            -- of catalog depth) and return to the default navbar tab underneath.
+            browser.key_events.Home = { { "Home" } }
         end
     end
 
     function OPDSBrowser:onZenOPDSMenu()
         activate_right_button(self)
+        return true
+    end
+
+    function OPDSBrowser:onHome()
+        if self.close_callback then
+            local ok = pcall(self.close_callback)
+            if not ok then UIManager:close(self) end
+        else
+            UIManager:close(self)
+        end
+        local open_default = rawget(_G, "__ZEN_UI_NAVBAR_OPEN_DEFAULT_TAB")
+        if type(open_default) == "function" then
+            open_default()
+        end
         return true
     end
 
@@ -862,7 +1160,7 @@ local function apply_opds()
         fix_buttons(self)
         -- Auto-navigate to default catalog (skip when returning to root via onReturn).
         if self._zen_default_navigated then return end
-        local default_url = G_reader_settings:readSetting("opds_default_url")
+        local default_url = get_opds_default_url()
         if default_url then
             self._zen_default_navigated = true
             -- Pre-load credentials so fetchFeed can auth on the first request.
@@ -920,7 +1218,7 @@ local function apply_opds()
             end
         end
         logger.dbg("OPDS genItemTableFromCatalog: total=", #item_table, "with_cover=", with_cover)
-        return item_table
+        return tag_downloaded_items(self, item_table)
     end
 
     -- Re-apply buttons after stock updateCatalog resets them.
@@ -930,8 +1228,7 @@ local function apply_opds()
         fix_buttons(self)
     end
 
-    -- Override menu dialogs to anchor to the right button (hamburger icon is on the right).
-    -- Stock KOReader anchors both to left_button; we replicate the logic with right_button.
+    -- Anchor menus to the action button immediately left of Close.
     function OPDSBrowser:showOPDSMenu()
         local ButtonDialog = require("ui/widget/buttondialog")
         local NetworkMgr   = require("ui/network/manager")
@@ -967,7 +1264,7 @@ local function apply_opds()
             },
             shrink_unneeded_width = true,
             anchor = function()
-                return self.title_bar.right_button.image.dimen
+                return self.title_bar._zen_opds_action_button.image.dimen
             end,
         }
         UIManager:show(dialog)
@@ -1030,23 +1327,23 @@ local function apply_opds()
             buttons = buttons,
             shrink_unneeded_width = true,
             anchor = function()
-                return self.title_bar.right_button.image.dimen
+                return self.title_bar._zen_opds_action_button.image.dimen
             end,
         }
         UIManager:show(dialog)
     end
 
     -- Hold on a root-list catalog entry: vertical single-column menu.
-    -- Keep opds_default_url in sync when a server's URL is changed via Edit.
+    -- Keep the default URL in sync when a server's URL is changed via Edit.
     local orig_editCatalogFromInput = OPDSBrowser.editCatalogFromInput
     function OPDSBrowser:editCatalogFromInput(fields, item, no_refresh)
         local old_url = item and item.url
         orig_editCatalogFromInput(self, fields, item, no_refresh)
         if old_url then
-            local saved_default = G_reader_settings:readSetting("opds_default_url")
+            local saved_default = get_opds_default_url()
             if saved_default == old_url then
                 local new_url = fields[2]:match("^%a+://") and fields[2] or "http://" .. fields[2]
-                G_reader_settings:saveSetting("opds_default_url", new_url)
+                set_opds_default_url(new_url)
             end
         end
     end
@@ -1058,11 +1355,11 @@ local function apply_opds()
         local LeftContainer  = require("ui/widget/container/leftcontainer")
         local NetworkMgr     = require("ui/network/manager")
         local _              = require("gettext")
-        local default_url    = G_reader_settings:readSetting("opds_default_url")
+        local default_url    = get_opds_default_url()
         local is_default     = default_url == item.url
 
         -- Build the same cover+title header as showDownloads.
-        local border      = Size.border.thin or 1
+        local border      = CoverUtils.BORDER_SIZE
         local gap         = Screen:scaleBySize(8)
         local dlg_w       = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.9)
         local avail_w     = dlg_w - 2 * (Size.border.window + Size.padding.button)
@@ -1086,7 +1383,8 @@ local function apply_opds()
             InputContainer.paintTo(self, bb, x, y)
             if not rounded_corners_enabled() then return end
             paintCornerMasks(bb, x, y, cover_w, cover_h, _corner_radius)
-            paintCornerBorderArcs(bb, x, y, cover_w, cover_h, _corner_radius, Blitbuffer.COLOR_BLACK)
+            paintCornerBorderArcs(bb, x, y, cover_w, cover_h,
+                _corner_radius, border, Blitbuffer.COLOR_BLACK)
         end
         local framed_cover = CoverPlaceholder:new{}
         local vstack = VGroup:new{ align = "left" }
@@ -1139,9 +1437,9 @@ local function apply_opds()
                     callback = function()
                         UIManager:close(dialog)
                         if is_default then
-                            G_reader_settings:delSetting("opds_default_url")
+                            set_opds_default_url()
                         else
-                            G_reader_settings:saveSetting("opds_default_url", item.url)
+                            set_opds_default_url(item.url)
                         end
                     end }},
                 {},
@@ -1187,8 +1485,6 @@ local function apply_opds()
         local orig_onTap = InputDialog.onTap
         dialog = InputDialog:new{
             title                       = _("Search") .. (catalog_name ~= "" and " " .. catalog_name or ""),
-            title_bar_left_icon         = "close",
-            title_bar_left_icon_tap_callback = function() UIManager:close(dialog) end,
             input_hint                  = _("Alexandre Dumas"),
             buttons = {{
                 {
@@ -1198,6 +1494,7 @@ local function apply_opds()
                 },
             }},
         }
+        ZenModalClose.installDialog(dialog, function() UIManager:close(dialog) end)
         -- Close keyboard + dialog on outside tap (mirrors library search).
         function dialog:onTap(arg, ges)
             if self.deny_keyboard_hiding then return end
@@ -1232,7 +1529,7 @@ local function apply_opds()
     -- Left-aligned context-style download dialog with cover/title/author header.
     function OPDSBrowser:showDownloads(item)
         local acquisitions = item.acquisitions
-        local filename     = self:getFileName(item)
+        local filename, download_identity = self:getFileName(item)
 
         local ButtonDialog   = require("ui/widget/buttondialog")
         local ConfirmBox     = require("ui/widget/confirmbox")
@@ -1247,7 +1544,7 @@ local function apply_opds()
         local current_dir = self:getCurrentDownloadDir()
 
         -- Header geometry: exact inner-content width formula matching context_menu.lua.
-        local border  = Size.border.thin or 1
+        local border  = CoverUtils.BORDER_SIZE
         local gap     = Screen:scaleBySize(8)
         local dlg_w   = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.9)
         local avail_w = dlg_w - 2 * (Size.border.window + Size.padding.button)
@@ -1317,6 +1614,11 @@ local function apply_opds()
         local _item_title = item.title or item.text or ""
         local _browser = self
         local function zen_download_cb(file)
+            if remember_downloaded(download_identity or filename) then
+                save_downloaded_names()
+            end
+            item._zen_opds_downloaded = true
+            UIManager:setDirty(_browser.show_parent or _browser, "ui")
             local dlg = ConfirmBox:new{
                 icon         = "notice-info",
                 text         = _("Downloaded") .. "\n" .. _item_title,
@@ -1380,7 +1682,7 @@ local function apply_opds()
                     end,
                 }})
                 if acq.last_read then
-                    table.insert(buttons, {{ text = "\u{25B6}  " .. _("Resume from page") .. " " .. acq.last_read, align = "left", bold = true,
+                    table.insert(buttons, {{ text = icons.arrow_right .. "  " .. _("Resume from page") .. " " .. acq.last_read, align = "left", bold = true,
                         callback = function()
                             UIManager:close(self.download_dialog)
                             OPDSPSE:streamPages(a.href, a.count, false,

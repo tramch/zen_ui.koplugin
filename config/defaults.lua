@@ -1,15 +1,26 @@
+local FontLanguage = require("common/font_language")
+local LibraryFontPath = require("common/library_font_path")
+local library_font_default = FontLanguage.supportsBundledFonts()
+    and LibraryFontPath.BUNDLED_DEFAULT or "default"
+
 local defaults = {
     _meta = {
         schema_version = 1,
         files_per_page_defaulted = false,
-        menu_activation_defaulted = false,
         screensaver_backup_created = false,
         footer_backup_created = false,
         quickstart_shown_for_version = false,
+        quickstart_completed = false,
+        quickstart_menu_tour_pending = false,
+        quickstart_reader_tour_pending = false,
+        reader_defaults_apply_on_next_open = false,
         sort_defaults_applied = false,
         bim_fbc_migrated = false,
         reader_footer_hide_cbz_default_migrated = false,
         context_menu_allow_delete_default_migrated = false,
+        library_font_hyperreadable_default_migrated = false,
+        lookup_plugin_items_default_migrated = false,
+        tbr_collection_migrated = false,
     },
     updater = {
         just_updated_version = "",
@@ -20,6 +31,12 @@ local defaults = {
     },
     rakuyomi = {
         return_to_chapter_list_on_exit = false,
+    },
+    kindle = {
+        hide_library_folder = false,
+    },
+    custom_icons = {
+        active_pack = "",
     },
     localization = {
         default_locale = "en",
@@ -44,7 +61,6 @@ local defaults = {
         zen_mode = true,
         status_bar = true,
         disable_top_menu_swipe_zones = true,
-        browser_folder_cover = true,
         browser_hide_underline = true,
         browser_hide_up_folder = true,
         favorites = true,
@@ -54,6 +70,7 @@ local defaults = {
         browser_cover_rounded_corners = true,
         browser_cover_mosaic_uniform = true,
         automatic_series_grouping = true,
+        hide_grouped_series = false,
         partial_page_repaint = false,
         reader_top_status_bar = true,
         reader_themes = false,
@@ -70,10 +87,26 @@ local defaults = {
         incognito_mode       = false,
         zen_opds             = true,
     },
+    search = {
+        substring = not FontLanguage.supportsWholeWordSearch(),
+    },
+    metadata = {
+        hardcover_enabled = true,
+        google_books_enabled = true,
+        open_library_enabled = true,
+        hardcover_auto_match = true,
+        epub_backup = false,
+    },
+    developer = {
+        allow_modal_drag = false,
+        double_tap_to_open_books = false,
+    },
     navbar = {
         show_tabs = {
             books = true,
             archive = false,
+            folder = false,
+            kindle = false,
             manga = false,
             news = false,
             continue = true,
@@ -82,6 +115,7 @@ local defaults = {
             collections = false,
             authors = true,
             series = true,
+            languages = true,
             home = true,
             stats = false,
             exit = false,
@@ -89,7 +123,9 @@ local defaults = {
             page_right = false,
             menu = false,
         },
-        tab_order = { "books", "authors", "series", "home", "continue", "favorites" },
+        tab_order = {
+            "books", "authors", "series", "languages", "home", "continue", "favorites",
+        },
         show_icons = true,
         show_labels = true,
         icon_size = 34,
@@ -97,6 +133,9 @@ local defaults = {
         books_label = "Library",
         home_label = "Home",
         default_tab = "home",
+        folder_path = "",
+        folder_label = "",
+        folder_icon = "tab_folder",
         manga_action = "rakuyomi",
         manga_folder = "",
         news_action = "quickrss",
@@ -131,13 +170,20 @@ local defaults = {
             notion = false,
             streak = false,
             opds = false,
+            tailscale = false,
+            zenfm = false,
             filebrowser = false,
         },
+        background_hatching = false,
+        show_labels = true,
         show_frontlight = true,
         show_warmth = true,
         flip_lh_rh_icon = false,
+        gyro_label = "",
+        gyro_icon = "quick_rotate",
         rotate_action = "90",
         screenshot_timer_seconds = 3,
+        tailscale_toggle_wifi = false,
     },
     status_bar = {
         custom_text = " ",
@@ -146,10 +192,12 @@ local defaults = {
         left_order   = { "time" },
         center_order = {},
         right_order  = { "wifi", "battery" },
+        date_format = "short",
         time_12h = true,
         show_bottom_border = false,
         colored = false,
         bold_text = false,
+        wifi_hide_when_off = false,
         hide_browser_bar = true,
     },
     browser_hide_up_folder = {
@@ -161,9 +209,11 @@ local defaults = {
     },
     folder_sort = {},
     folder_display_mode = {},
+    folder_cover_paths = {},
     library_background = {
         enabled = false,
         path = "",  -- "" = none; absolute image path otherwise
+        opacity = 100,
     },
     additional_home_dirs = {},
     browser_list_item_layout = {
@@ -180,27 +230,51 @@ local defaults = {
         show_page_count = false,
     },
     browser_folder_cover = {
-        cover_mode = "gallery",   -- "gallery" | "stack" | "normal" | "none"
+        cover_mode = "normal",   -- "gallery" | "stack" | "normal" | "none"
         show_folder_name = true,
         name_centered = false,    -- false = bottom placement
         name_opaque = false,      -- false = transparent bg
         show_spine_lines = false,
         show_item_count = true,
-        crop_to_fit = true,
     },
     browser_series_badge = {
         show_series_badge = false,
     },
+    uniform_cover_ratio = "2:3",
     opds = {
         display_mode = "mosaic", -- "mosaic" | "list" | "classic"
+        default_url = "",
+        downloaded = {},
     },
     mosaic_title_strip = {
         show_title  = false,
         show_author = false,
     },
     library_font = {
-        font_face = "default",
+        font_face = library_font_default,
         font_size = 18,
+    },
+    book_details = {
+        text_styles = {
+            description = { font_face = "default" },
+        },
+        order = {
+            "authors", "series", "tags", "language", "rating", "annotations",
+            "note", "pages", "progress", "read_time", "time_remaining",
+        },
+        authors = true,
+        series = true,
+        tags = true,
+        navigate_to_tag = false,
+        language = true,
+        rating = true,
+        annotations = true,
+        note = true,
+        pages = true,
+        progress = true,
+        read_time = false,
+        time_remaining = false,
+        description = true,
     },
     zen_scroll_bar = {
         style              = "page_number",  -- "bar" | "dots" | "page_number"
@@ -209,6 +283,7 @@ local defaults = {
     },
     context_menu = {
         allow_delete = true,
+        show_plugin_actions = false,
     },
     reader_top_status_bar = {
         font_face = "default",
@@ -221,6 +296,9 @@ local defaults = {
         custom_text      = "",
         show_bottom_border = false,
         bottom_border_progress = false,
+        show_chapter_marks = false,
+        colored = false,
+        wifi_hide_when_off = false,
         hide_in_cbz = true,
     },
     reader_themes = {
@@ -229,13 +307,21 @@ local defaults = {
         custom = {},
     },
     reader_footer = {
-        verbose_chapter_time = false,
+        status_bar_enabled = true,
+        chapter_time_format = "number",
         hide_in_cbz = true,
+    },
+    page_browser = {
+        toc_font_size = 18,
+        bookmarks_font_size = 18,
     },
     highlight_lookup = {
         allow_unknown_items = false,
+        color_names         = {},
         show_wikipedia      = false,
-        show_ai_assistant   = false,
+        show_xray           = true,
+        show_koassistant    = true,
+        show_ai_assistant   = true,
     },
     dict_quick_lookup = {},
 
@@ -252,6 +338,7 @@ local defaults = {
         night_h     = 20,
         night_m     = 0,
         night_value = 8,
+        use_mode_values = false,
     },
     brightness_schedule = {
         day_h       = 7,
@@ -260,18 +347,34 @@ local defaults = {
         night_h     = 20,
         night_m     = 0,
         night_value = 5,
+        use_mode_values = false,
     },
     group_view = {
         include_new_in_tbr = false,
+        authors_collate = "authors",
+        group_collate = {
+            series = "title",
+            languages = "title",
+            tags = "title",
+        },
         display_mode = {
             authors = "list_image_meta",
             series = "list_image_meta",
+            languages = "list_image_meta",
             tags = "list_image_meta",
             to_be_read = "list_image_meta",
+        },
+        detail_display_mode = {
+            authors = {},
+            series = {},
+            languages = {},
+            tags = {},
         },
         group_reverse = {
             authors = false,
             series = false,
+            languages = false,
+            tags = false,
         },
         tags_global = {
             collate = "title",
@@ -280,18 +383,17 @@ local defaults = {
         detail_collate = {
             authors = {},
             series = {},
+            languages = {},
             tags = {},
             to_be_read = {},
         },
         detail_reverse = {
             authors = {},
             series = {},
+            languages = {},
             tags = {},
             to_be_read = {},
         },
-    },
-    reader_page_browser = {
-        layout = "grid",
     },
     lockdown = {
         disable_context_menu      = false,
@@ -301,6 +403,9 @@ local defaults = {
         require_hold_in_qs        = false,
         disable_settings_panel    = false,
         magnify_ui                = false,
+    },
+    incognito = {
+        timeout_minutes = 0,
     },
 }
 

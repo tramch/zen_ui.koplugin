@@ -1,36 +1,58 @@
 ---
 title: FAQ
 category: FAQ
-summary: Answers to common questions about Zen UI.
+summary: Answers to common questions about ZenOS.
 settingsPath: ''
 order: 6
 ---
 
-<!-- Documentation current through Zen UI v2.5.0. -->
+<!-- Documentation current through ZenOS v3.3.0. -->
 
-## How do I install Zen UI?
+## How do I install ZenOS?
 
-See the [Installation](/zen-ui/docs/installation) guide for full installation instructions.
+See the [Installation](/zen-os/docs/installation) guide for full installation instructions.
 
-## Zen UI is not starting and doesn't show in the Plugins list
+## ZenOS is not starting and doesn't show in the Plugins list
 
-Make sure you downloaded the [Release](https://github.com/AnthonyGress/zen_ui.koplugin/releases) and that there is not a second folder inside the `zen_ui.koplugin` folder. The `zen_ui.koplugin` folder should contain `main.lua` along with the other Zen UI code files - *NOT* a second `zen_ui.koplugin` folder. You want to copy the one that has the `.lua` files inside
+Make sure you downloaded the [release](https://github.com/xZenLabs/zen-os/releases) and did not leave a second folder inside `zenos.koplugin`. The installed `zenos.koplugin` folder must contain `main.lua` and the other ZenOS code files directly, not another nested `zenos.koplugin` folder.
 
-![zen_ui.koplugin folder inside the KOReader plugins directory](/images/zen_ui/plugins_folder.png)
+![zenos.koplugin folder inside the KOReader plugins directory](/images/zen_os/plugins_folder.webp)
 
 ## How do I access the reader menu?
 
 Swipe up while in a book, then tap the **Aa** icon.
 
-![Page browser menu](/images/zen_ui/page_browser_menu.png)
+![Page browser menu](/images/zen_os/page_browser_menu.webp)
 
 ## No books found
 
-Make sure you set the home folder to the location where your books are. I recommend using a dedicated folder like `/books` for all books. Set this in **Zen Settings > Library > Home folder > Set home folder**. Also make sure your books are in an open format like `epub`. KOReader can only read open format books and cannot read proprietary formats such `azw3`, `kfx`, `mobi` etc. You will need to convert your books to an open format to use KOReader
+Set the Home folder to the location where your books are, preferably a dedicated folder such as `/books`, under **Zen Settings > Library > Home folder > Set home folder**. Sideloaded books must use a KOReader-supported, DRM-free format. On Kindle devices, install [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin) to browse and prepare books from the device's native Kindle library through ZenOS.
+
+## How do I open my native Kindle library?
+
+Install [kindle.koplugin](https://github.com/kaikozlov/kindle.koplugin) on a Kindle device and restart KOReader. **Kindle Library** then becomes available as a Navbar tab and Home Book strip source. The plugin prepares a book on its first open and caches it for later use.
 
 ## Calibre loads all my books into folders of the authors, how can I fix that?
 
-Enable the setting **Library > Layout > Show all files from subfolders**.
+Enable the setting **Zen Settings > Library > Layout > Show all files from subfolders**.
+
+## Which plugins and patches are incompatible with ZenOS?
+
+Most patches not made specifically for ZenOS should not be used. Remove or disable them to avoid any conflicts.
+
+Disable each item before using ZenOS unless its action is **Remove**; those plugins must be deleted from KOReader's plugins folder.
+
+| Plugin | Action |
+| --- | --- |
+| Project: Title | Remove |
+| Simple UI | Disable |
+| Visual Overhaul Suite (VOS) | Disable |
+| QuickMenu | Remove |
+| Appearance | Disable |
+| Burrow | Disable |
+| QuickUI | Disable |
+| Reader Menu Redesign | Disable |
+| Shortcuts Toolbar | Disable |
 
 ## How do I navigate the entire filesystem?
-If you want to navigate your filesystem (inside or out of Zen mode) you should disable home folder locking. Settings > Library > Home folder > Lock home folder. This will allow you to freely navigate the filesystem on your device.
+Set **Zen Settings > Library > Home folder > Lock home folder** to **Off**.

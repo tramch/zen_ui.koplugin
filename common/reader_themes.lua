@@ -55,6 +55,15 @@ local function display_color(value)
     return string.format("#%06x", 0xffffff - tonumber(color:sub(2), 16))
 end
 
+local function blitbuffer_color(value)
+    local color = display_color(value)
+    if not color then return nil end
+    local r = tonumber(color:sub(2, 3), 16)
+    local g = tonumber(color:sub(4, 5), 16)
+    local b = tonumber(color:sub(6, 7), 16)
+    return require("ffi/blitbuffer").ColorRGB32(r, g, b, 0xFF)
+end
+
 local function theme_for(plugin, dark_mode)
     if not is_enabled(plugin) then return nil end
     local config = plugin and plugin.config
@@ -110,12 +119,12 @@ end
 
 function M.getTextColor(plugin)
     local theme = theme_for(plugin)
-    if not theme then return nil end
-    local text = display_color(theme.text)
-    local r = tonumber(text:sub(2, 3), 16)
-    local g = tonumber(text:sub(4, 5), 16)
-    local b = tonumber(text:sub(6, 7), 16)
-    return require("ffi/blitbuffer").ColorRGB32(r, g, b, 0xFF)
+    return theme and blitbuffer_color(theme.text) or nil
+end
+
+function M.getBackgroundColor(plugin)
+    local theme = theme_for(plugin)
+    return theme and blitbuffer_color(theme.background) or nil
 end
 
 function M.applyFont(reader, plugin)
@@ -123,10 +132,8 @@ function M.applyFont(reader, plugin)
     if not (document and type(document.setFontFace) == "function") then return false end
     local theme = theme_for(plugin)
     local face = theme and theme.font_face
-    if not face or face == "default" then
-        face = reader.font and reader.font.font_face
-    end
-    if face then document:setFontFace(face) end
+    if type(face) ~= "string" or face == "default" then return false end
+    document:setFontFace(face)
     return true
 end
 

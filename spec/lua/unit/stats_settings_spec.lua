@@ -2,12 +2,16 @@ describe("stats settings", function()
     local saved_settings
     local saved_default_font_size
     local saved_font_size
+    local saved_week_start_day
     local saved_edit_mode
     local arrange_options
     local shown_widget
+    local remembered_routes
 
     before_each(function()
+        remembered_routes = {}
         local settings = {
+            week_start_day = 1,
             widgets = {
                 order = { "today", "this_week", "trend_graph", "goal_progress" },
                 enabled = { today = false, this_week = false, goal_progress = false },
@@ -22,6 +26,7 @@ describe("stats settings", function()
             MAX_WIDGET_SLOTS = 6,
             load = function() return settings end,
             save = function(current)
+                saved_week_start_day = current.week_start_day
                 saved_edit_mode = current.edit_mode
                 local widgets = current.widgets
                 local order, enabled = {}, {}
@@ -61,6 +66,7 @@ describe("stats settings", function()
         ZenSpec.replace("ui/uimanager", {
             scheduleIn = function() end,
             show = function(_self, widget) shown_widget = widget end,
+            nextTick = function(_self, callback) callback() end,
         })
         ZenSpec.replace("ui/widget/spinwidget", { new = function(_self, opts) return opts end })
         ZenSpec.replace("modules/filebrowser/patches/stats_settings", StatsSettings)
@@ -76,7 +82,8 @@ describe("stats settings", function()
         ZenSpec.replace("common/shared_state", { get = function() end })
         ZenSpec.replace("common/inline_icon_map", {
             divider = "divider",
-            display = "widgets",
+            widgets = "widgets",
+            edit = "edit",
             settings_stats = "stats",
             title = "font",
         })
@@ -88,6 +95,17 @@ describe("stats settings", function()
         })
         ZenSpec.replace("common/ui/zen_arrange_list", {
             show = function(opts) arrange_options = opts end,
+        })
+        ZenSpec.replace("modules/settings/zen_settings_page", {
+            rememberStandaloneArrangeRoute = function(path, opener, arrange_path)
+                remembered_routes[#remembered_routes + 1] = {
+                    path = path,
+                    opener = opener,
+                    arrange_path = arrange_path,
+                }
+                return true
+            end,
+            show = function() end,
         })
         ZenSpec.unload("modules/settings/sections/stats_settings")
     end)
@@ -101,6 +119,33 @@ describe("stats settings", function()
 
         assert.is_true(saved_settings.enabled.today)
         assert.is_true(saved_settings.enabled.this_week)
+    end)
+
+    it("keeps the plugin when Widgets is opened from the settings page", function()
+        local plugin = { config = {} }
+        local section = require("modules/settings/sections/stats_settings").build({
+            plugin = plugin,
+        })
+
+        section.sub_item_table[1].callback({})
+
+        assert.are.equal(plugin, arrange_options.plugin)
+    end)
+
+    it("persists repeated widget order commits", function()
+        local section = require("modules/settings/sections/stats_settings").build({})
+        section.sub_item_table[1].callback()
+        local items = arrange_options.item_table
+
+        items[1], items[2] = items[2], items[1]
+        arrange_options.callback()
+        assert.are.same({ "this_week", "today", "trend_graph", "goal_progress" },
+            saved_settings.order)
+
+        items[2], items[3] = items[3], items[2]
+        arrange_options.callback()
+        assert.are.same({ "this_week", "trend_graph", "today", "goal_progress" },
+            saved_settings.order)
     end)
 
     it("uses the divider icon for stat separators", function()
@@ -138,7 +183,7 @@ describe("stats settings", function()
         local font_items = arrange_options.item_table[4].sub_item_table_func()
 
         assert.are.equal("Font size: 11", font_items[1].text_func())
-        assert.are.equal("Use default font size", font_items[2].text)
+        assert.is_nil(font_items[2])
     end)
 
     it("persists the default font size", function()
@@ -150,18 +195,39 @@ describe("stats settings", function()
         assert.are.equal(19, saved_default_font_size)
     end)
 
+    it("persists Sunday and Monday as the week reset day", function()
+        local section = require("modules/settings/sections/stats_settings").build({})
+        local days = section.sub_item_table[5].sub_item_table_func()
+        assert.is_true(days[1].checked_func())
+        days[2].callback()
+        assert.are.equal(2, saved_week_start_day)
+        assert.is_true(days[2].checked_func())
+        assert.is_false(days[1].checked_func())
+        days[1].callback()
+        assert.are.equal(1, saved_week_start_day)
+    end)
+
     it("persists edit mode", function()
         local section = require("modules/settings/sections/stats_settings").build({})
+        assert.are.equal("edit", section.sub_item_table[2].icon_glyph)
         section.sub_item_table[2].callback()
 
         assert.is_true(saved_edit_mode)
     end)
 
-    it("opens a widget settings page with finish controls", function()
+    it("opens a widget settings page without finish controls", function()
         local settings = require("modules/settings/sections/stats_settings")
+        local plugin = { config = {} }
 
-        assert.is_true(settings.openWidgetSettings("trend_graph"))
+        assert.is_true(settings.openWidgetSettings("trend_graph", plugin))
         assert.are.equal("Reading trend", arrange_options.title)
-        assert.is_function(arrange_options.item_table._zen_arrange_done_func)
+        assert.are.equal(plugin, arrange_options.plugin)
+        assert.is_false(arrange_options.allow_arrange)
+        assert.is_function(arrange_options.back_callback)
+        assert.is_nil(arrange_options.item_table._zen_arrange_done_func)
+
+        arrange_options.back_callback()
+        assert.are.same({ "trend_graph" }, remembered_routes[1].arrange_path)
+        assert.are.same({}, remembered_routes[2].arrange_path)
     end)
 end)

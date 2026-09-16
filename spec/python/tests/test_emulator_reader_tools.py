@@ -99,15 +99,163 @@ def test_reader_page_browser_modes_and_aa_menu_render() -> None:
             assert driver.command(
                 "activate_reader_control", name="page_browser"
             )["activated"] is True
+            default_carousel = _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "carousel",
+            )["page_browser"]
+            assert default_carousel["thumbnail_count"] == 3
+            assert {"single", "carousel", "grid", "aa"}.issubset(
+                default_carousel["controls"]
+            )
+            assert default_carousel["focused"] == "header:1"
+
+            assert driver.command(
+                "activate_reader_control", name="page_browser_grid"
+            )["activated"] is True
             grid = _wait_command(
                 driver,
                 "page_browser_state",
                 lambda result: result.get("page_browser", {}).get("layout") == "grid",
             )["page_browser"]
-            assert grid["thumbnail_count"] > 0
-            assert {"single", "grid", "aa"}.issubset(grid["controls"])
+            assert grid["thumbnail_count"] == 9
+            assert grid["focused"] == "header:1"
+
+            assert driver.command("page_browser_key", key="Down")["handled"] is True
+            focused_page = _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: str(
+                    result.get("page_browser", {}).get("focused", "")
+                ).startswith("page:"),
+            )["page_browser"]
+            assert focused_page["focus_page"] == grid["focus_page"]
+            assert driver.command("page_browser_key", key="Right")["handled"] is True
+            next_focused_page = driver.command("page_browser_state")["page_browser"]
+            assert next_focused_page["focused"].startswith("page:")
+            assert next_focused_page["focus_page"] == grid["focus_page"]
+            assert driver.command("page_browser_key", key="Return")["handled"] is True
+            _wait_command(
+                driver,
+                "reader_overlay_state",
+                lambda result: result.get("overlays", {}).get("page_browser") is False,
+            )
+
+            assert driver.command(
+                "activate_reader_control", name="page_browser"
+            )["activated"] is True
+            _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("focused") == "header:1",
+            )
+            assert driver.command("page_browser_key", key="Back")["handled"] is True
+            _wait_command(
+                driver,
+                "reader_overlay_state",
+                lambda result: result.get("overlays", {}).get("page_browser") is False,
+            )
+
+            assert driver.command(
+                "activate_reader_control", name="page_browser"
+            )["activated"] is True
+            _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "grid",
+            )
+
+            assert driver.command(
+                "activate_reader_control", name="page_browser_toc"
+            )["activated"] is True
+            toc = _wait_command(
+                driver,
+                "hardware_overlay_state",
+                lambda result: result.get("overlay", {}).get("kind") == "toc",
+            )["overlay"]
+            assert toc["focused"] == "back"
+            assert driver.command("hardware_overlay_key", key="Down")["handled"] is True
+            assert _wait_command(
+                driver,
+                "hardware_overlay_state",
+                lambda result: result.get("overlay", {}).get("focused") == "entry",
+            )["overlay"]["kind"] == "toc"
+            assert driver.command("hardware_overlay_key", key="Back")["handled"] is True
+            _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "grid",
+            )
+
+            assert driver.command(
+                "activate_reader_control", name="page_browser_book_info"
+            )["activated"] is True
+            book_info = _wait_command(
+                driver,
+                "hardware_overlay_state",
+                lambda result: result.get("overlay", {}).get("kind") == "book_info",
+            )["overlay"]
+            assert book_info["focused"] == "back"
+            assert driver.command("hardware_overlay_key", key="Down")["handled"] is True
+            assert _wait_command(
+                driver,
+                "hardware_overlay_state",
+                lambda result: result.get("overlay", {}).get("focused") == "description",
+            )["overlay"]["kind"] == "book_info"
+            assert driver.command("hardware_overlay_key", key="Back")["handled"] is True
+
+            _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "grid",
+            )
+            assert driver.command(
+                "activate_reader_control", name="page_browser_bookmarks"
+            )["activated"] is True
+            bookmarks = _wait_command(
+                driver,
+                "hardware_overlay_state",
+                lambda result: result.get("overlay", {}).get("kind") == "bookmarks",
+            )["overlay"]
+            assert bookmarks["focused"] == "back"
+            assert driver.command("hardware_overlay_key", key="Back")["handled"] is True
+
+            _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "grid",
+            )
             grid_frame = root / "page-browser-grid.png"
             driver.screenshot(grid_frame)
+
+            assert driver.command(
+                "activate_reader_control", name="page_browser_carousel"
+            )["activated"] is True
+            carousel = _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "carousel",
+            )["page_browser"]
+            assert carousel["thumbnail_count"] == 3
+            carousel_frame = root / "page-browser-carousel.png"
+            driver.screenshot(carousel_frame)
+            assert _frames_differ(grid_frame, carousel_frame)
+
+            assert driver.command("page_browser_key", key="Back")["handled"] is True
+            _wait_command(
+                driver,
+                "reader_overlay_state",
+                lambda result: result.get("overlays", {}).get("page_browser") is False,
+            )
+            assert driver.command(
+                "activate_reader_control", name="page_browser"
+            )["activated"] is True
+            reopened_carousel = _wait_command(
+                driver,
+                "page_browser_state",
+                lambda result: result.get("page_browser", {}).get("layout") == "carousel",
+            )["page_browser"]
+            assert reopened_carousel["thumbnail_count"] == 3
 
             assert driver.command(
                 "activate_reader_control", name="page_browser_single"
@@ -121,6 +269,7 @@ def test_reader_page_browser_modes_and_aa_menu_render() -> None:
             single_frame = root / "page-browser-single.png"
             driver.screenshot(single_frame)
             assert _frames_differ(grid_frame, single_frame)
+            assert _frames_differ(carousel_frame, single_frame)
 
             assert driver.command(
                 "activate_reader_control", name="page_browser_grid"
@@ -137,7 +286,8 @@ def test_reader_page_browser_modes_and_aa_menu_render() -> None:
             overlay = _wait_command(
                 driver,
                 "reader_overlay_state",
-                lambda result: result.get("overlays", {}).get("aa_menu") is True,
+                lambda result: result.get("overlays", {}).get("aa_menu") is True
+                and result.get("overlays", {}).get("page_browser") is False,
             )["overlays"]
             assert overlay["page_browser"] is False
             aa_frame = root / "reader-aa-menu.png"

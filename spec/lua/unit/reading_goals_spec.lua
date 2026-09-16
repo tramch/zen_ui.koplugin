@@ -44,6 +44,56 @@ describe("reading goals settings", function()
         assert.are.equal("Books", monthly[4].text)
         assert.are.equal("Monthly books goal: 1", monthly[7].text_func())
     end)
+
+    it("shares one CBZ/CBR exclusion toggle", function()
+        local Goals = require("common/reading_goals")
+        local goals = { periods = { "daily" } }
+        local saves = 0
+        local item = Goals.settingsItems(goals, function() saves = saves + 1 end)[5]
+
+        assert.are.equal("Exclude CBZ/CBR files", item.text)
+        assert.is_false(item.checked_func())
+        item.callback()
+        assert.is_true(goals.exclude_cbz_cbr)
+        assert.is_true(item.checked_func())
+        assert.are.equal(1, saves)
+    end)
+
+    it("refreshes every target label after changing its value", function()
+        local shown
+        ZenSpec.replace("ui/uimanager", {
+            show = function(_self, widget) shown = widget end,
+        })
+        ZenSpec.replace("ui/widget/spinwidget", {
+            new = function(_self, widget) return widget end,
+        })
+        ZenSpec.unload("common/reading_goals")
+
+        local Goals = require("common/reading_goals")
+        local items = Goals.settingsItems({ periods = { "daily" } }, function() end)
+        local update_count = 0
+        local touchmenu = {
+            updateItems = function() update_count = update_count + 1 end,
+        }
+        local target_indexes = {
+            { 4, 5 },
+            { 4, 5 },
+            { 5, 6, 7 },
+            { 5, 6, 7 },
+        }
+
+        for period_index, indexes in ipairs(target_indexes) do
+            local period_items = items[period_index].sub_item_table_func()
+            for _i, target_index in ipairs(indexes) do
+                local target_item = period_items[target_index]
+                target_item.callback(touchmenu)
+                shown.callback({ value = 7 })
+                assert.matches(": 7$", target_item.text_func())
+            end
+        end
+
+        assert.are.equal(10, update_count)
+    end)
 end)
 
 describe("reading goals widget", function()
@@ -91,6 +141,16 @@ describe("reading goals widget", function()
             getHeight = function() return 600 end,
         } })
         ZenSpec.replace("common/widget_resources", { free = function() end })
+        ZenSpec.replace("common/ui/zen_modal_close", {
+            installTitleBar = function(title_bar, _parent, callback)
+                title_bar.right_button = {
+                    file = "/zen-ui/icons/close.svg",
+                    callback = callback,
+                }
+                return title_bar.right_button
+            end,
+            addToFocusLayout = function() end,
+        })
         ZenSpec.replace("ui/uimanager", { show = function(_self, widget) shown = widget end })
         for _i, name in ipairs({
             "ui/widget/horizontalgroup", "ui/widget/horizontalspan", "ui/widget/textwidget",
@@ -123,6 +183,7 @@ describe("reading goals widget", function()
 
     it("stacks every selected goal period", function()
         local widget = require("modules/filebrowser/patches/home/widgets/reading_goals")
+        assert.are.equal("xs", widget.size)
         local opened_settings = 0
         local goal_widget = widget.build({
             width = 600,
@@ -160,6 +221,8 @@ describe("reading goals widget", function()
         assert.is_true(goal_widget:onHoldReadingGoals(nil, { pos = { x = 20, y = 20 } }))
         assert.are.equal(1, opened_settings)
         assert.are.equal("Reading goals", shown.widgets[1].title)
+        assert.is_nil(shown.widgets[1].left_button)
+        assert.are.equal("/zen-ui/icons/close.svg", shown.widgets[1].right_button.file)
         local popup_texts = {}
         for _i, item in ipairs(created) do
             if item.text then popup_texts[item.text] = true end

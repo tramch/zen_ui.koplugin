@@ -18,6 +18,23 @@ describe("paths", function()
         assert.is_false(Paths.isInHomeDir("/outside/Book.epub"))
     end)
 
+    it("matches canonical history paths under an explicit /sdcard home", function()
+        _G.G_reader_settings = ZenSpec.memorySettings({ home_dir = "/sdcard" })
+
+        assert.are.equal("/storage/emulated/0", Paths.getConfiguredHomeDir())
+        assert.are.equal("/storage/emulated/0", Paths.getHomeDir())
+        assert.is_true(Paths.isInHomeDir("/storage/emulated/0/Book.epub"))
+    end)
+
+    it("falls back to KOReader's normalized device home", function()
+        _G.G_reader_settings = ZenSpec.memorySettings()
+        ZenSpec.replace("device", { home_dir = "/sdcard/" })
+
+        assert.is_nil(Paths.getConfiguredHomeDir())
+        assert.are.equal("/storage/emulated/0", Paths.getHomeDir())
+        assert.is_true(Paths.isInHomeDir("/storage/emulated/0/Book.epub"))
+    end)
+
     it("themes the external archive without treating it as a library root", function()
         local original_get_archive_dir = Paths.getArchiveDir
         Paths.getArchiveDir = function() return "/storage/emulated/0/Archive" end

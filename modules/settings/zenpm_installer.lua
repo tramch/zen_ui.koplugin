@@ -10,6 +10,7 @@ local M = {}
 
 local RELEASE_URL = "https://api.github.com/repos/xZenLabs/zen-pm/releases/latest"
 local RELEASE_REPO_PATH = "/xzenlabs/zen-pm"
+local DOWNLOAD_TIMEOUT = 60
 local DOWNLOAD_HOSTS = {
     ["github.com"] = true,
     ["objects.githubusercontent.com"] = true,
@@ -17,32 +18,14 @@ local DOWNLOAD_HOSTS = {
     ["github-releases.githubusercontent.com"] = true,
 }
 
-local function call_device_bool(device, name)
-    if not device or type(device[name]) ~= "function" then return false end
-    local ok, value = pcall(device[name], device)
-    if ok then return value == true end
-    ok, value = pcall(device[name])
-    return ok and value == true
-end
-
---- Return the ZenPM asset filename templates for the supplied platform facts.
-function M.select_assets(device, jit_os)
-    local plugin_template
-    local apk_template
-    local is_eink_reader = call_device_bool(device, "hasEinkScreen")
-    if call_device_bool(device, "isAndroid") then
-        plugin_template = "ZenPM-koreader-android-%s.zip"
-        apk_template = "ZenPM-android-%s.apk"
-    elseif is_eink_reader then
-        plugin_template = "ZenPM-koreader-ereader-%s.zip"
-    elseif jit_os == "OSX" or jit_os == "Darwin" then
-        plugin_template = "ZenPM-koreader-macos-%s.zip"
-    elseif jit_os == "Linux" then
-        plugin_template = "ZenPM-koreader-linux-%s.zip"
-    else
-        plugin_template = "ZenPM-koreader-ereader-%s.zip"
+--- Return the ZenPM asset filename template for a supported ARM architecture.
+function M.select_assets(jit_os, jit_arch)
+    if jit_os ~= "Linux" then return end
+    if jit_arch == "arm64" or jit_arch == "aarch64" then
+        return "ZenPM-koreader-linux-%s.zip"
+    elseif jit_arch == "arm" or jit_arch == "arm32" or jit_arch == "armv7l" then
+        return "ZenPM-koreader-ereader-%s.zip"
     end
-    return plugin_template, apk_template
 end
 
 function M.asset_prefix(template)
@@ -51,8 +34,10 @@ function M.asset_prefix(template)
 end
 
 function M.detect_assets()
-    local device = require("device")
-    return M.select_assets(device, type(jit) == "table" and jit.os or nil)
+    return M.select_assets(
+        type(jit) == "table" and jit.os or nil,
+        type(jit) == "table" and jit.arch or nil
+    )
 end
 
 local function parse_url(url)
@@ -100,7 +85,7 @@ local function get_release()
         local body = {}
         local _, code, headers = https.request{
             url = url,
-            headers = { ["User-Agent"] = "zen_ui.koplugin" },
+            headers = { ["User-Agent"] = "zenos.koplugin" },
             redirect = false,
             sink = ltn12.sink.table(body),
         }
@@ -173,7 +158,7 @@ local function download(asset, destination)
         local _, code, headers = https.request{
             url = url,
             method = "HEAD",
-            headers = { ["User-Agent"] = "zen_ui.koplugin" },
+            headers = { ["User-Agent"] = "zenos.koplugin" },
             sink = ltn12.sink.null(),
         }
         if (code == 301 or code == 302 or code == 307 or code == 308) and headers and headers.location then
@@ -188,7 +173,7 @@ local function download(asset, destination)
     if not f then return false, err end
     local _, code = https.request{
         url = url,
-        headers = { ["User-Agent"] = "zen_ui.koplugin" },
+        headers = { ["User-Agent"] = "zenos.koplugin" },
         sink = ltn12.sink.file(f),
     }
     pcall(f.close, f)
@@ -264,8 +249,7 @@ local function valid_plugin_tree(path)
     return path_exists(path .. "/_meta.lua") and path_exists(path .. "/main.lua")
 end
 
-local function install_asset(asset, plugins_dir)
-    local zip_path = plugins_dir .. "/.zenpm_download.zip"
+local function install_asset(asset, plugins_dir, zip_path)
     local stage_dir = plugins_dir .. "/.zenpm_install_stage"
     local staged = stage_dir .. "/zenpm.koplugin"
     local active = plugins_dir .. "/zenpm.koplugin"
@@ -274,13 +258,6 @@ local function install_asset(asset, plugins_dir)
     logger.info("install start asset=", asset.name, " plugins_dir=", plugins_dir)
     remove_tree(stage_dir)
     remove_tree(backup)
-    os.remove(zip_path)
-    local ok, err = download(asset, zip_path)
-    if not ok then
-        logger.warn("download failed: ", tostring(err))
-        return false, err
-    end
-    logger.info("download verified asset=", asset.name)
     if not valid_zip(zip_path) then
         logger.warn("package validation failed asset=", asset.name)
         os.remove(zip_path)
@@ -314,18 +291,13 @@ local function install_asset(asset, plugins_dir)
 end
 
 local function restart_koreader()
-    local UIManager = require("ui/uimanager")
-    if type(UIManager.restartKOReader) == "function" then
-        UIManager:restartKOReader()
-    else
-        UIManager:broadcastEvent(require("ui/event"):new("Restart"))
-    end
+    require("common/restart").request()
 end
 
 local function show_install_prompt(plugin)
     local ConfirmBox = require("ui/widget/confirmbox")
     local UIManager = require("ui/uimanager")
-    local plugin_template, apk_template = M.detect_assets()
+    local plugin_template = M.detect_assets()
     logger.info("install requested asset_template=", plugin_template)
     UIManager:show(ConfirmBox:new{
         text = _("Are you sure you want to install the ZenPM plugin?"),
@@ -343,25 +315,64 @@ local function show_install_prompt(plugin)
             UIManager:forceRePaint()
             UIManager:nextTick(function()
                 Trapper:wrap(function()
+                    local co = coroutine.running()
+                    local timed_out = false
+                    screen._on_button_action = function()
+                        coroutine.resume(co, false)
+                    end
+                    screen:update{ button = _("Cancel") }
+                    UIManager:forceRePaint()
+                    local timeout_cb = function()
+                        timed_out = true
+                        coroutine.resume(co, false)
+                    end
+                    UIManager:scheduleIn(DOWNLOAD_TIMEOUT, timeout_cb)
+
                     logger.info("fetching latest ZenPM release")
-                    local release, release_err = get_release()
-                    if not release then
-                        screen:update{ subtitle = release_err or _("Could not find a ZenPM release."), button = _("OK"), dismissable = true }
+                    local asset_prefix = M.asset_prefix(plugin_template)
+                    local root = PLUGIN_ROOT or (plugin and plugin.path) or ""
+                    local plugins_dir = root:match("^(.*)/[^/]+$") or root
+                    local zip_path = plugins_dir .. "/.zenpm_download.zip"
+                    os.remove(zip_path)
+                    local completed, ok, err, asset = Trapper:dismissableRunInSubprocess(function()
+                        local release, err = get_release()
+                        if not release then return false, err end
+                        local selected = release_asset(release, asset_prefix)
+                        if not selected then return false end
+                        local downloaded, download_err = download(selected, zip_path)
+                        return downloaded, download_err, selected
+                    end, screen)
+                    UIManager:unschedule(timeout_cb)
+                    screen._on_button_action = nil
+                    if not completed then
+                        os.remove(zip_path)
+                        if timed_out then
+                            screen:update{ subtitle = _("Timeout"), button = _("OK"), dismissable = true }
+                        else
+                            screen:onClose()
+                        end
                         return
                     end
-                    local asset_prefix = M.asset_prefix(plugin_template)
-                    local asset = release_asset(release, asset_prefix)
                     if not asset then
-                        logger.warn("no matching release asset prefix=", asset_prefix)
-                        screen:update{ subtitle = _("No ZenPM package is available for this device."), button = _("OK"), dismissable = true }
+                        if err then
+                            screen:update{ subtitle = err, button = _("OK"), dismissable = true }
+                        else
+                            logger.warn("no matching release asset prefix=", asset_prefix)
+                            screen:update{ subtitle = _("No ZenPM package is available for this device."), button = _("OK"), dismissable = true }
+                        end
                         return
                     end
                     logger.info("selected release asset=", asset.name)
-                    screen:update{ subtitle = _("Installing ZenPM") .. "..." }
+                    if not ok then
+                        os.remove(zip_path)
+                        logger.warn("download failed: ", tostring(err))
+                        screen:update{ subtitle = err or _("Could not install ZenPM."), button = _("OK"), dismissable = true }
+                        return
+                    end
+                    logger.info("download verified asset=", asset.name)
+                    screen:update{ subtitle = _("Installing ZenPM") .. "...", button = false }
                     UIManager:forceRePaint()
-                    local root = PLUGIN_ROOT or (plugin and plugin.path) or ""
-                    local plugins_dir = root:match("^(.*)/[^/]+$") or root
-                    local ok, err = install_asset(asset, plugins_dir)
+                    ok, err = install_asset(asset, plugins_dir, zip_path)
                     if not ok then
                         logger.warn("install failed: ", tostring(err))
                         screen:update{ subtitle = err or _("Could not install ZenPM."), button = _("OK"), dismissable = true }
@@ -369,13 +380,6 @@ local function show_install_prompt(plugin)
                     end
                     local subtitle = _("ZenPM has been installed. Restart KOReader to use it.")
                         .. "\n\n" .. _("A launcher button has been added for ZenPM.")
-                    if apk_template then
-                        local version = asset.name:sub(#asset_prefix + 1, -5)
-                        subtitle = subtitle .. "\n\n" .. string.format(
-                            _("Manually download and sideload %1 from the same ZenPM release."),
-                            string.format(apk_template, version)
-                        )
-                    end
                     screen:update{
                         subtitle = subtitle,
                         button = _("Restart now"),

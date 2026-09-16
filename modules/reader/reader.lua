@@ -14,6 +14,8 @@ local PATCH_MODULES = {
     margin_hold_guard = "modules/reader/patches/margin_hold_guard",
     bookmarks = "modules/reader/patches/bookmarks",
     page_browser = "modules/reader/patches/page_browser",
+    stable_page_statistics = "modules/reader/patches/stable_page_statistics",
+    highlight_names = "modules/reader/patches/highlight_names",
     highlight_menu = "modules/reader/patches/highlight_menu",
     dict_quick_lookup = "modules/reader/patches/dict_quick_lookup",
     status_on_open = "modules/reader/patches/status_on_open",
@@ -54,7 +56,7 @@ function M.init(logger, plugin)
         return true
     end
 
-    -- Route KOReader's File browser gesture through the same transition as Zen UI.
+    -- Route KOReader's File browser gesture through the same transition as ZenOS.
     local library_navigation_fn = load_patch("library_navigation")
     if library_navigation_fn then
         run_feature(logger, plugin, "library_navigation", library_navigation_fn)
@@ -64,6 +66,12 @@ function M.init(logger, plugin)
     local page_browser_fn = load_patch("page_browser")
     if page_browser_fn then
         run_feature(logger, plugin, "page_browser", page_browser_fn)
+    end
+
+    -- Make page-based reading statistics follow active stable page labels.
+    local stable_page_statistics_fn = load_patch("stable_page_statistics")
+    if stable_page_statistics_fn then
+        run_feature(logger, plugin, "stable_page_statistics", stable_page_statistics_fn)
     end
 
     -- Always apply: replaces the "Opening file..." popup with a bottom banner
@@ -95,7 +103,7 @@ function M.init(logger, plugin)
         run_feature(logger, plugin, "reader_footer", reader_footer_fn)
     end
 
-    -- Always apply: format time_to_chapter in Kindle style ("X mins left in chapter")
+    -- Always apply the selected chapter-time display format.
     local reader_footer_time_format_fn = load_patch("reader_footer_time_format")
     if reader_footer_time_format_fn then
         run_feature(logger, plugin, "reader_footer_time_format", reader_footer_time_format_fn)
@@ -117,6 +125,12 @@ function M.init(logger, plugin)
     local bookmarks_fn = load_patch("bookmarks")
     if bookmarks_fn then
         run_feature(logger, plugin, "bookmarks", bookmarks_fn)
+    end
+
+    -- Always apply: user-defined highlight color names.
+    local highlight_names_fn = load_patch("highlight_names")
+    if highlight_names_fn then
+        run_feature(logger, plugin, "highlight_names", highlight_names_fn)
     end
 
     -- Always apply: icon-only DictQuickLookup buttons (self-disables when feature is off).

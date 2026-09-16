@@ -1,23 +1,74 @@
 -- settings/sections/library_settings.lua
--- Library (filebrowser) settings items for Zen UI.
+-- Library (filebrowser) settings items for ZenOS.
 -- Receives ctx: { plugin, config, save_and_apply, apply_feature }
 
 local _ = require("gettext")
 local UIManager = require("ui/uimanager")
+local DataStorage = require("datastorage")
 local paths = require("common/paths")
 local SharedState = require("common/shared_state")
 local icons = require("common/inline_icon_map")
 local IconItem = require("common/ui/icon_menu_item")
+local defaults = require("config/defaults")
+local LibraryFontPath = require("common/library_font_path")
 
 local status_bar_section  = require("modules/settings/sections/library_settings/status_bar_settings")
+local metadata_section    = require("modules/settings/sections/library_settings/metadata_settings")
 local settings_apply      = require("modules/settings/zen_settings_apply")
 local zen_settings_utils  = require("modules/settings/zen_settings_utils")
 
 local M = {}
+local LIBRARY_WALLPAPERS_DIR = DataStorage:getFullDataDir() .. "/resources/wallpapers"
+local DEFAULT_LIBRARY_FONT = defaults.library_font.font_face
+local BOOK_DETAIL_ORDER = defaults.book_details.order
+local BOOK_DETAIL_TEXT_STYLE_DEFAULTS = defaults.book_details.text_styles
 local home_rebuild_pending = false
 local home_rebuild_poll_active = false
 local bg_surface_refresh_pending = false
 local bg_surface_refresh_poll_active = false
+
+local function resolved_library_font(font_face)
+    if font_face == "default" then font_face = DEFAULT_LIBRARY_FONT end
+    return LibraryFontPath.resolve(font_face)
+end
+
+local function font_name_text(cfg, FontChooser)
+    if cfg.font_face == "default" then return _("default") end
+    return FontChooser.getFontNameText(resolved_library_font(cfg.font_face)) or cfg.font_face
+end
+
+local function find_registered_font_file(font_face)
+    local ok_font, Font = pcall(require, "ui/font")
+    local mapped_face = ok_font and Font.fontmap and Font.fontmap[font_face] or font_face
+    local ok_list, FontList = pcall(require, "fontlist")
+    if not ok_list or type(FontList.fontinfo) ~= "table" then return nil end
+    if FontList.fontinfo[mapped_face] then return mapped_face end
+    if type(font_face) ~= "string" or font_face:find("/", 1, true)
+            or font_face:find("\\", 1, true) then
+        return nil
+    end
+
+    local filename = type(mapped_face) == "string" and mapped_face:match("([^/]+)$")
+    local matched_file
+    for file in pairs(FontList.fontinfo) do
+        if filename and file:sub(-#filename - 1) == "/" .. filename
+                and (not matched_file or file < matched_file) then
+            matched_file = file
+        end
+    end
+    return matched_file
+end
+
+local function picker_default(FontChooser)
+    local default_file = resolved_library_font(DEFAULT_LIBRARY_FONT)
+    if type(FontChooser.isFontRegistered) ~= "function"
+            or FontChooser.isFontRegistered(default_file) then
+        return DEFAULT_LIBRARY_FONT, default_file
+    end
+    local registered_default = find_registered_font_file(default_file)
+    if registered_default then return DEFAULT_LIBRARY_FONT, registered_default end
+    return "default", find_registered_font_file("cfont")
+end
 
 local function is_filemanager_menu_open()
     local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
@@ -100,7 +151,7 @@ local function ensure_library_font_cfg(config)
         config.library_font = {}
     end
     if type(config.library_font.font_face) ~= "string" or config.library_font.font_face == "" then
-        config.library_font.font_face = "default"
+        config.library_font.font_face = DEFAULT_LIBRARY_FONT
     end
     local font_size = tonumber(config.library_font.font_size)
     if not font_size then
@@ -137,14 +188,14 @@ function M.build(ctx)
         end
         return config.browser_folder_cover
     end
-    local function save_fbc()
-        plugin:saveConfig()
-        UIManager:setDirty(nil, "full")
+    local function rebuild_filechooser()
+        local ui = require("apps/filemanager/filemanager").instance
+        if ui and ui.file_chooser then ui.file_chooser:updateItems() end
     end
     local function save_fbc_and_update()
         plugin:saveConfig()
-        local ui = require("apps/filemanager/filemanager").instance
-        if ui and ui.file_chooser then ui.file_chooser:updateItems() end
+        rebuild_filechooser()
+        schedule_home_rebuild_on_menu_close(plugin)
     end
     local function get_home_lock_mode()
         local cfg = config.browser_hide_up_folder
@@ -167,12 +218,13 @@ function M.build(ctx)
     local items = {}
 
     table.insert(items, status_bar_section.build(ctx))
+    table.insert(items, metadata_section.build(ctx))
     table.insert(items, {
         text_func = function()
             local cfg = ensure_library_font_cfg(config)
             local ok_fc, FontChooser = pcall(require, "ui/widget/fontchooser")
             local face_text = (cfg.font_face == "default") and _("default")
-                or (ok_fc and FontChooser.getFontNameText(cfg.font_face) or cfg.font_face)
+                or (ok_fc and font_name_text(cfg, FontChooser) or cfg.font_face)
             return string.format("%s %s, %s", _("Font:"), face_text, tostring(cfg.font_size))
         end,
         sub_item_table = {
@@ -203,7 +255,7 @@ function M.build(ctx)
                     local cfg = ensure_library_font_cfg(config)
                     local ok_fc, FontChooser = pcall(require, "ui/widget/fontchooser")
                     local face_text = (cfg.font_face == "default") and _("default")
-                        or (ok_fc and FontChooser.getFontNameText(cfg.font_face) or cfg.font_face)
+                        or (ok_fc and font_name_text(cfg, FontChooser) or cfg.font_face)
                     return string.format("%s %s", _("Font:"), face_text)
                 end,
                 keep_menu_open = true,
@@ -211,27 +263,39 @@ function M.build(ctx)
                     local ok_fc, FontChooser = pcall(require, "ui/widget/fontchooser")
                     if not ok_fc then return end
                     local cfg = ensure_library_font_cfg(config)
-                    local footer_settings = G_reader_settings:readSetting("footer") or {}
-                    local fallback_face = footer_settings.text_font_face or "NotoSans-Regular.ttf"
-                    local display_face = cfg.font_face == "default" and fallback_face or cfg.font_face
+                    local default_config, default_file = picker_default(FontChooser)
+                    local display_face = cfg.font_face == "default"
+                        and default_file or resolved_library_font(cfg.font_face)
+                    if type(FontChooser.isFontRegistered) == "function"
+                            and not FontChooser.isFontRegistered(display_face) then
+                        local registered_face = find_registered_font_file(display_face)
+                        if registered_face then
+                            display_face = registered_face
+                        else
+                            cfg.font_face = default_config
+                            display_face = default_file
+                            save_library_font(config, plugin, touchmenu_instance)
+                        end
+                    end
+                    if not display_face then return end
                     UIManager:show(FontChooser:new{
                         title = _("Library font"),
                         font_file = display_face,
-                        default_font_file = fallback_face,
+                        default_font_file = default_file,
                         callback = function(file)
-                            if cfg.font_face ~= file then
-                                cfg.font_face = file
+                            local portable_file = LibraryFontPath.toConfig(file)
+                            if cfg.font_face ~= portable_file then
+                                cfg.font_face = portable_file
                                 save_library_font(config, plugin, touchmenu_instance, true)
                             end
                         end,
                     })
                 end,
-                hold_callback = function(touchmenu_instance)
+                hold_callback = function()
                     local cfg = ensure_library_font_cfg(config)
-                    if cfg.font_face ~= "default" then
-                        cfg.font_face = "default"
-                        save_library_font(config, plugin, touchmenu_instance, true)
-                    end
+                    local font_file = resolved_library_font(cfg.font_face)
+                    local InfoMessage = require("ui/widget/infomessage")
+                    UIManager:show(InfoMessage:new{ text = font_file, show_icon = false })
                 end,
             },
             {
@@ -244,9 +308,9 @@ function M.build(ctx)
                         ok_text = _("Reset"),
                         ok_callback = function()
                             local cfg = ensure_library_font_cfg(config)
-                            local changed = cfg.font_face ~= "default" or cfg.font_size ~= 18
+                            local changed = cfg.font_face ~= DEFAULT_LIBRARY_FONT or cfg.font_size ~= 18
                             if changed then
-                                cfg.font_face = "default"
+                                cfg.font_face = DEFAULT_LIBRARY_FONT
                                 cfg.font_size = 18
                                 save_library_font(config, plugin, touchmenu_instance, true)
                             end
@@ -261,6 +325,58 @@ function M.build(ctx)
     -- Folders
     -- -------------------------------------------------------------------------
 
+    local function save_and_refresh_series_grouping()
+        plugin:saveConfig()
+        local home = SharedState.get(plugin, "home")
+        if home and type(home.invalidateLibraryCache) == "function" then
+            home.invalidateLibraryCache()
+        end
+        local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
+        local fc = ok_fm and FileManager and FileManager.instance
+            and FileManager.instance.file_chooser
+        if fc and fc._zen_clear_item_table_cache then
+            fc:_zen_clear_item_table_cache()
+        end
+        if fc and fc.path and fc.changeToPath then
+            fc:changeToPath(fc.path)
+        else
+            save_and_apply("automatic_series_grouping")
+        end
+    end
+
+    local function build_series_items()
+        local sub_items = {
+            {
+                text = _("Group book series into folders"),
+                checked_func = function()
+                    return config.features.automatic_series_grouping ~= false
+                end,
+                callback = function(touchmenu_instance)
+                    config.features.automatic_series_grouping =
+                        config.features.automatic_series_grouping == false
+                    save_and_refresh_series_grouping()
+                    if touchmenu_instance then
+                        touchmenu_instance.item_table = build_series_items()
+                    end
+                end,
+            },
+        }
+        if config.features.automatic_series_grouping ~= false then
+            sub_items[#sub_items + 1] = {
+                text = _("Hide grouped series"),
+                checked_func = function()
+                    return config.features.hide_grouped_series == true
+                end,
+                callback = function()
+                    config.features.hide_grouped_series =
+                        config.features.hide_grouped_series ~= true
+                    save_and_refresh_series_grouping()
+                end,
+            }
+        end
+        return sub_items
+    end
+
     table.insert(items, {
         text = _("Folders"),
         sub_item_table = {
@@ -274,26 +390,8 @@ function M.build(ctx)
                 end,
             },
             {
-                text = _("Group book series into folders"),
-                checked_func = function()
-                    return config.features.automatic_series_grouping ~= false
-                end,
-                callback = function()
-                    config.features.automatic_series_grouping =
-                        config.features.automatic_series_grouping == false
-                    plugin:saveConfig()
-                    local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
-                    local fc = ok_fm and FileManager and FileManager.instance
-                        and FileManager.instance.file_chooser
-                    if fc and fc._zen_clear_item_table_cache then
-                        fc:_zen_clear_item_table_cache()
-                    end
-                    if fc and fc.path and fc.changeToPath then
-                        fc:changeToPath(fc.path)
-                    else
-                        save_and_apply("automatic_series_grouping")
-                    end
-                end,
+                text = _("Series"),
+                sub_item_table_func = build_series_items,
             },
             -- Cover mode subsection
             {
@@ -340,7 +438,7 @@ function M.build(ctx)
                         checked_func = function() return fbc().show_spine_lines ~= false end,
                         callback = function()
                             fbc().show_spine_lines = fbc().show_spine_lines == false
-                            save_fbc()
+                            save_fbc_and_update()
                         end,
                     },
                     {
@@ -348,7 +446,7 @@ function M.build(ctx)
                         checked_func = function() return fbc().show_item_count ~= false end,
                         callback = function()
                             fbc().show_item_count = fbc().show_item_count == false
-                            save_fbc()
+                            save_fbc_and_update()
                         end,
                     },
                 },
@@ -362,7 +460,7 @@ function M.build(ctx)
                         checked_func = function() return fbc().name_opaque == true end,
                         callback = function()
                             fbc().name_opaque = fbc().name_opaque ~= true
-                            save_fbc()
+                            save_fbc_and_update()
                         end,
                     },
                     {
@@ -374,7 +472,7 @@ function M.build(ctx)
                                 checked_func = function() return fbc().name_centered == true end,
                                 callback = function()
                                     fbc().name_centered = true
-                                    save_fbc()
+                                    save_fbc_and_update()
                                 end,
                             },
                             {
@@ -383,7 +481,7 @@ function M.build(ctx)
                                 checked_func = function() return fbc().name_centered ~= true end,
                                 callback = function()
                                     fbc().name_centered = false
-                                    save_fbc()
+                                    save_fbc_and_update()
                                 end,
                             },
                         },
@@ -393,7 +491,7 @@ function M.build(ctx)
                         checked_func = function() return fbc().show_folder_name ~= false end,
                         callback = function()
                             fbc().show_folder_name = fbc().show_folder_name == false
-                            save_fbc()
+                            save_fbc_and_update()
                         end,
                     },
                 },
@@ -488,7 +586,7 @@ function M.build(ctx)
                             config.browser_page_count.show_page_count =
                                 config.browser_page_count.show_page_count ~= true
                             plugin:saveConfig()
-                            UIManager:setDirty(nil, "full")
+                            rebuild_filechooser()
                         end,
                     },
                     {
@@ -504,7 +602,7 @@ function M.build(ctx)
                             config.browser_series_badge.show_series_badge =
                                 config.browser_series_badge.show_series_badge ~= true
                             plugin:saveConfig()
-                            UIManager:setDirty(nil, "full")
+                            rebuild_filechooser()
                         end,
                     },
                     {
@@ -520,7 +618,7 @@ function M.build(ctx)
                             config.browser_cover_badges.show_favorite_badge =
                                 config.browser_cover_badges.show_favorite_badge ~= true
                             plugin:saveConfig()
-                            UIManager:setDirty(nil, "full")
+                            rebuild_filechooser()
                         end,
                     },
                     {
@@ -540,7 +638,23 @@ function M.build(ctx)
                         end,
                     },
                     {
-                        text = _("Show progress % on mosaic covers"),
+                        text = _("Show progress bar"),
+                        checked_func = function()
+                            return type(config.browser_cover_badges) == "table"
+                                and config.browser_cover_badges.show_native_progress_bar == true
+                        end,
+                        callback = function()
+                            if type(config.browser_cover_badges) ~= "table" then
+                                config.browser_cover_badges = {}
+                            end
+                            config.browser_cover_badges.show_native_progress_bar =
+                                config.browser_cover_badges.show_native_progress_bar ~= true
+                            plugin:saveConfig()
+                            UIManager:setDirty(nil, "full")
+                        end,
+                    },
+                    {
+                        text = _("Show reading progress"),
                         checked_func = function()
                             return type(config.browser_cover_badges) == "table"
                                 and config.browser_cover_badges.show_mosaic_progress == true
@@ -578,10 +692,11 @@ function M.build(ctx)
                         text = "2:3 " .. _("(standard)"),
                         radio = true,
                         checked_func = function()
-                            return G_reader_settings:readSetting("uniform_cover_ratio") ~= "3:4"
+                            return config.uniform_cover_ratio ~= "3:4"
                         end,
                         callback = function()
-                            G_reader_settings:saveSetting("uniform_cover_ratio", "2:3")
+                            config.uniform_cover_ratio = "2:3"
+                            plugin:saveConfig()
                             local ui = require("apps/filemanager/filemanager").instance
                             if ui and ui.file_chooser then ui.file_chooser:updateItems() end
                         end,
@@ -590,10 +705,11 @@ function M.build(ctx)
                         text = "3:4 " .. _("(Kindle)"),
                         radio = true,
                         checked_func = function()
-                            return G_reader_settings:readSetting("uniform_cover_ratio") == "3:4"
+                            return config.uniform_cover_ratio == "3:4"
                         end,
                         callback = function()
-                            G_reader_settings:saveSetting("uniform_cover_ratio", "3:4")
+                            config.uniform_cover_ratio = "3:4"
+                            plugin:saveConfig()
                             local ui = require("apps/filemanager/filemanager").instance
                             if ui and ui.file_chooser then ui.file_chooser:updateItems() end
                         end,
@@ -629,7 +745,8 @@ function M.build(ctx)
                     config.features.browser_cover_rounded_corners =
                         config.features.browser_cover_rounded_corners ~= true
                     plugin:saveConfig()
-                    UIManager:setDirty(nil, "full")
+                    rebuild_filechooser()
+                    schedule_home_rebuild_on_menu_close(plugin)
                 end,
             },
             {
@@ -645,7 +762,7 @@ function M.build(ctx)
                     config.mosaic_title_strip.show_title =
                         config.mosaic_title_strip.show_title ~= true
                     plugin:saveConfig()
-                    settings_apply.prompt_restart()
+                    rebuild_filechooser()
                 end,
             },
             {
@@ -661,7 +778,7 @@ function M.build(ctx)
                     config.mosaic_title_strip.show_author =
                         config.mosaic_title_strip.show_author ~= true
                     plugin:saveConfig()
-                    settings_apply.prompt_restart()
+                    rebuild_filechooser()
                 end,
             },
         },
@@ -1092,6 +1209,13 @@ function M.build(ctx)
         if type(config.library_background.path) ~= "string" then
             config.library_background.path = ""
         end
+        local opacity = tonumber(config.library_background.opacity)
+        if not opacity then
+            config.library_background.opacity = 100
+        else
+            config.library_background.opacity = math.max(0,
+                math.min(100, math.floor(opacity + 0.5)))
+        end
         return config.library_background
     end
     local function lib_bg_path()
@@ -1108,13 +1232,11 @@ function M.build(ctx)
         save_lib_bg()
     end
     local function lib_bg_error_text(code)
-        if code == "not_jpeg" then
-            return _("Background image must be a JPG or JPEG file.")
-        elseif code == "missing" then
+        if code == "missing" then
             return _("Background image file not found.")
         elseif code == "no_decoder" then
             return _("Image support is unavailable on this device.")
-        elseif code == "decode_failed" then
+        elseif code == "unsupported" or code == "decode_failed" then
             return _("Background image could not be loaded. It may be corrupt or unsupported.")
         end
         return _("No background image selected.")
@@ -1128,40 +1250,37 @@ function M.build(ctx)
                 return dir
             end
         end
-        return paths.getHomeDir() or G_reader_settings:readSetting("lastdir") or "/"
+        return LIBRARY_WALLPAPERS_DIR
     end
 
     table.insert(items, {
         text = _("Background"),
-        sub_item_table = {
-            {
-                text = _("Enable"),
-                checked_func = function()
-                    return ensure_lib_bg().enabled == true
-                end,
-                callback = function(touchmenu_instance)
-                    local bg = ensure_lib_bg()
-                    if bg.enabled ~= true then
-                        -- Enabling: only allow if the image actually works.
-                        local bg_mod = require("common/ui/background")
-                        local ok_img, reason = bg_mod.validateImage(bg.path)
-                        if not ok_img then
-                            bg.enabled = false
-                            local InfoMessage = require("ui/widget/infomessage")
-                            UIManager:show(InfoMessage:new{
-                                text = lib_bg_error_text(reason),
-                            })
-                            if touchmenu_instance then touchmenu_instance:updateItems() end
-                            return
-                        end
-                        bg.enabled = true
-                    else
-                        bg.enabled = false
-                    end
-                    save_lib_bg()
+        checked_func = function()
+            return ensure_lib_bg().enabled == true
+        end,
+        checkmark_callback = function(touchmenu_instance)
+            local bg = ensure_lib_bg()
+            if bg.enabled ~= true then
+                -- Enabling: only allow if the image actually works.
+                local bg_mod = require("common/ui/background")
+                local ok_img, reason = bg_mod.validateImage(bg.path)
+                if not ok_img then
+                    bg.enabled = false
+                    local InfoMessage = require("ui/widget/infomessage")
+                    UIManager:show(InfoMessage:new{
+                        text = lib_bg_error_text(reason),
+                    })
                     if touchmenu_instance then touchmenu_instance:updateItems() end
-                end,
-            },
+                    return
+                end
+                bg.enabled = true
+            else
+                bg.enabled = false
+            end
+            save_lib_bg()
+            if touchmenu_instance then touchmenu_instance:updateItems() end
+        end,
+        sub_item_table = {
             {
                 text_func = function()
                     local path = lib_bg_path()
@@ -1178,6 +1297,10 @@ function M.build(ctx)
                         select_directory = false,
                         show_files = true,
                         path = lib_bg_start_path(),
+                        goHome = function(chooser)
+                            chooser:changeToPath(LIBRARY_WALLPAPERS_DIR)
+                            return true
+                        end,
                         onConfirm = function(file_path)
                             local bg_mod = require("common/ui/background")
                             local ok_img, reason = bg_mod.validateImage(file_path)
@@ -1198,6 +1321,27 @@ function M.build(ctx)
                         set_lib_bg("")
                         if touchmenu_instance then touchmenu_instance:updateItems() end
                     end
+                end,
+            },
+            {
+                text_func = function()
+                    return string.format("%s: %d%%", _("Opacity"),
+                        ensure_lib_bg().opacity)
+                end,
+                enabled_func = function()
+                    return ensure_lib_bg().enabled == true
+                end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    local bg = ensure_lib_bg()
+                    zen_settings_utils.show_value_picker(
+                        _("Background") .. " - " .. _("Opacity"), bg.opacity,
+                        function(value)
+                            bg.opacity = math.max(0,
+                                math.min(100, math.floor(value + 0.5)))
+                            save_lib_bg()
+                            if touchmenu_instance then touchmenu_instance:updateItems() end
+                        end, 0, 100)
                 end,
             },
         },
@@ -1297,6 +1441,7 @@ function M.build(ctx)
                         end
                     end, current_path, default_path)
                 end,
+                keep_menu_open = true,
             },
             {
                 text = _("Lock home folder"),
@@ -1343,15 +1488,277 @@ function M.build(ctx)
             plugin:saveConfig()
         end,
     })
+    IconItem.decorate(items[#items], icons.delete)
 
     IconItem.decorate(items[1], icons.settings_status)
     IconItem.decorate(items[2], icons.settings_layout)
-    IconItem.decorate(items[3], icons.title)
-    IconItem.decorate(items[4], icons.settings_folders)
-    IconItem.decorate(items[5], icons.settings_covers)
-    IconItem.decorate(items[6], icons.settings_scroll)
-    IconItem.decorate(items[7], icons.settings_background)
-    IconItem.decorate(items[8], icons.settings_home_folder)
+    IconItem.decorate(items[4], icons.title)
+    IconItem.decorate(items[5], icons.settings_folders)
+    IconItem.decorate(items[6], icons.settings_covers)
+    IconItem.decorate(items[7], icons.settings_scroll)
+    IconItem.decorate(items[8], icons.settings_background)
+    IconItem.decorate(items[9], icons.settings_home_folder)
+    table.insert(items, table.remove(items, 3))
+
+    local detail_labels = {
+        authors = _("Authors"),
+        series = _("Series"),
+        tags = _("Tags"),
+        language = _("Language"),
+        rating = _("Rating"),
+        annotations = _("Annotations"),
+        note = _("Note"),
+        navigate_to_tag = _("Navigate to tag"),
+        pages = _("Pages"),
+        progress = _("Progress"),
+        read_time = _("Read time"),
+        time_remaining = _("Time remaining"),
+        description = _("Description"),
+    }
+    local function normalize_detail_order(order)
+        local normalized, seen, valid = {}, {}, {}
+        for _i, id in ipairs(BOOK_DETAIL_ORDER) do valid[id] = true end
+        for _i, id in ipairs(type(order) == "table" and order or {}) do
+            if valid[id] and not seen[id] then
+                normalized[#normalized + 1], seen[id] = id, true
+            end
+        end
+        for _i, id in ipairs(BOOK_DETAIL_ORDER) do
+            if not seen[id] then normalized[#normalized + 1] = id end
+        end
+        return normalized
+    end
+    local function detail_toggle(id)
+        local default_enabled = defaults.book_details[id] == true
+        local function is_enabled()
+            local cfg = type(config.book_details) == "table"
+                and config.book_details or {}
+            if type(cfg[id]) == "boolean" then return cfg[id] end
+            return default_enabled
+        end
+        return {
+            text = detail_labels[id],
+            orig_item = id,
+            checked_func = is_enabled,
+            callback = function()
+                if type(config.book_details) ~= "table" then
+                    config.book_details = {}
+                end
+                config.book_details[id] = not is_enabled()
+                plugin:saveConfig()
+            end,
+        }
+    end
+
+    local function ensure_book_detail_description_style()
+        if type(config.book_details) ~= "table" then config.book_details = {} end
+        local cfg = config.book_details
+        if type(cfg.text_styles) ~= "table" then cfg.text_styles = {} end
+        local style = type(cfg.text_styles.description) == "table"
+            and cfg.text_styles.description or {}
+        cfg.text_styles.description = style
+        local style_defaults = BOOK_DETAIL_TEXT_STYLE_DEFAULTS.description
+        if type(style.font_face) ~= "string" or style.font_face == "" then
+            style.font_face = style_defaults.font_face
+        end
+        local size = tonumber(style.font_size)
+        style.font_size = size and math.max(6, math.min(40,
+            math.floor(size + 0.5))) or nil
+        return style
+    end
+
+    local function description_font_size(style)
+        return style.font_size or ensure_library_font_cfg(config).font_size
+    end
+
+    local function save_book_detail_description_style(touchmenu_instance)
+        plugin:saveConfig()
+        if touchmenu_instance and touchmenu_instance.updateItems then
+            touchmenu_instance:updateItems()
+        end
+    end
+
+    local function book_detail_default_font(FontChooser)
+        local face = resolved_library_font(ensure_library_font_cfg(config).font_face)
+        if type(FontChooser.isFontRegistered) ~= "function"
+                or FontChooser.isFontRegistered(face) then
+            return face
+        end
+        return find_registered_font_file(face) or select(2, picker_default(FontChooser))
+    end
+
+    local function build_book_detail_description_font_items()
+        return {
+            {
+                text_func = function()
+                    local style = ensure_book_detail_description_style()
+                    local ok_fc, FontChooser = pcall(require, "ui/widget/fontchooser")
+                    local face_text = style.font_face == "default" and _("default")
+                        or (ok_fc and font_name_text(style, FontChooser) or style.font_face)
+                    return string.format("%s %s", _("Font:"), face_text)
+                end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    local ok_fc, FontChooser = pcall(require, "ui/widget/fontchooser")
+                    if not ok_fc then return end
+                    local style = ensure_book_detail_description_style()
+                    local default_font = book_detail_default_font(FontChooser)
+                    local display_face = style.font_face == "default"
+                        and default_font or resolved_library_font(style.font_face)
+                    if type(FontChooser.isFontRegistered) == "function"
+                            and not FontChooser.isFontRegistered(display_face) then
+                        display_face = find_registered_font_file(display_face)
+                            or default_font
+                    end
+                    if not display_face then return end
+                    UIManager:show(FontChooser:new{
+                        title = _("Description") .. " " .. _("font"),
+                        font_file = display_face,
+                        default_font_file = default_font,
+                        callback = function(file)
+                            local portable_file = LibraryFontPath.toConfig(file)
+                            if style.font_face ~= portable_file then
+                                style.font_face = portable_file
+                                save_book_detail_description_style(touchmenu_instance)
+                            end
+                        end,
+                    })
+                end,
+            },
+            {
+                text_func = function()
+                    local style = ensure_book_detail_description_style()
+                    return string.format("%s %s", _("Font size:"),
+                        tostring(description_font_size(style)))
+                end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    local SpinWidget = require("ui/widget/spinwidget")
+                    local style = ensure_book_detail_description_style()
+                    UIManager:show(SpinWidget:new{
+                        title_text = _("Description") .. " " .. _("font size"),
+                        value = description_font_size(style),
+                        value_min = 6,
+                        value_max = 40,
+                        default_value = ensure_library_font_cfg(config).font_size,
+                        callback = function(spin)
+                            style.font_size = math.max(6, math.min(40, spin.value))
+                            save_book_detail_description_style(touchmenu_instance)
+                        end,
+                    })
+                end,
+            },
+            {
+                text = _("Use default style"),
+                callback = function(touchmenu_instance)
+                    config.book_details.text_styles.description = {
+                        font_face = BOOK_DETAIL_TEXT_STYLE_DEFAULTS.description.font_face,
+                    }
+                    save_book_detail_description_style(touchmenu_instance)
+                end,
+            },
+        }
+    end
+
+    local function show_book_details()
+        if type(config.book_details) ~= "table" then config.book_details = {} end
+        local cfg = config.book_details
+        cfg.order = normalize_detail_order(cfg.order)
+        local sort_items = {}
+        for _i, id in ipairs(cfg.order) do
+            local item = detail_toggle(id)
+            if id == "tags" then
+                item.sub_title = detail_labels[id]
+                item.sub_item_table = { detail_toggle("navigate_to_tag") }
+            end
+            sort_items[#sort_items + 1] = item
+        end
+        local description_item = detail_toggle("description")
+        description_item.arrange_pinned_last = true
+        description_item.sub_title = detail_labels.description
+        description_item.checkmark_callback = description_item.callback
+        description_item.callback = nil
+        description_item.sub_item_table_func = build_book_detail_description_font_items
+        sort_items[#sort_items + 1] = description_item
+        require("common/ui/zen_arrange_list").show{
+            title = _("Book details"),
+            item_table = sort_items,
+            plugin = plugin,
+            callback = function()
+                local order = {}
+                for _i, item in ipairs(sort_items) do
+                    if item.orig_item ~= "description" then
+                        order[#order + 1] = item.orig_item
+                    end
+                end
+                cfg.order = normalize_detail_order(order)
+                plugin:saveConfig()
+            end,
+        }
+    end
+
+    local function detail_search_items()
+        local search_items = {}
+        local function add(id)
+            search_items[#search_items + 1] = {
+                text = detail_labels[id],
+                orig_item = id,
+                _zen_search_open = show_book_details,
+            }
+        end
+        for _i, id in ipairs(BOOK_DETAIL_ORDER) do add(id) end
+        for _i, id in ipairs({ "navigate_to_tag", "description" }) do
+            add(id)
+        end
+        return search_items
+    end
+
+    table.insert(items, IconItem.decorate({
+        text = _("Book details"),
+        _zen_settings_submenu = true,
+        _zen_search_items_func = detail_search_items,
+        keep_menu_open = true,
+        callback = show_book_details,
+    }, icons.details))
+
+    table.insert(items, IconItem.decorate({
+        text = _("Include new books in TBR"),
+        help_text = _("New includes unread books and books modified since they were last opened."),
+        checked_func = function()
+            return type(config.group_view) == "table"
+                and config.group_view.include_new_in_tbr == true
+        end,
+        callback = function(touchmenu_instance)
+            if type(config.group_view) ~= "table" then config.group_view = {} end
+            config.group_view.include_new_in_tbr =
+                config.group_view.include_new_in_tbr ~= true
+            plugin:saveConfig()
+            local home = SharedState.get(plugin, "home")
+            if home and home.rebuildActive then
+                home.rebuildActive()
+            end
+            if touchmenu_instance then touchmenu_instance:updateItems() end
+        end,
+    }, icons.tbr))
+
+    table.insert(items, IconItem.decorate({
+        text = _("Context menu"),
+        sub_item_table = {
+            {
+                text = _("Plugin actions"),
+                checked_func = function()
+                    return type(config.context_menu) == "table"
+                        and config.context_menu.show_plugin_actions == true
+                end,
+                callback = function()
+                    if type(config.context_menu) ~= "table" then config.context_menu = {} end
+                    config.context_menu.show_plugin_actions =
+                        config.context_menu.show_plugin_actions ~= true
+                    plugin:saveConfig()
+                end,
+            },
+        },
+    }, icons.more))
 
     return items
 end

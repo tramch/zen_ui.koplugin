@@ -37,6 +37,7 @@ end
 
 function M.normalize(goals)
     if type(goals) ~= "table" then goals = {} end
+    goals.exclude_cbz_cbr = goals.exclude_cbz_cbr == true
     local legacy_metric = goals.metric == "time" and "time" or "pages"
     local valid, periods, seen = {}, {}, {}
     for _i, item in ipairs(PERIODS) do valid[item.id] = true end
@@ -87,7 +88,7 @@ function M.settingsItems(goals, save)
                             return label .. tostring(goals[target.key] or target.default)
                         end,
                         keep_menu_open = true,
-                        callback = function()
+                        callback = function(touchmenu_instance)
                             local SpinWidget = require("ui/widget/spinwidget")
                             UIManager:show(SpinWidget:new{
                                 title_text = title,
@@ -97,6 +98,9 @@ function M.settingsItems(goals, save)
                                 callback = function(spin)
                                     goals[target.key] = spin.value
                                     save()
+                                    if touchmenu_instance and touchmenu_instance.updateItems then
+                                        touchmenu_instance:updateItems()
+                                    end
                                 end,
                             })
                         end,
@@ -148,6 +152,14 @@ function M.settingsItems(goals, save)
             end,
         }
     end
+    items[#items + 1] = {
+        text = _("Exclude CBZ/CBR files"),
+        checked_func = function() return goals.exclude_cbz_cbr end,
+        callback = function()
+            goals.exclude_cbz_cbr = not goals.exclude_cbz_cbr
+            save()
+        end,
+    }
     return items
 end
 

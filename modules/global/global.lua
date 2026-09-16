@@ -7,10 +7,12 @@ local PATCH_MODULES = {
     brightness_schedule    = "modules/global/patches/brightness_schedule",
     menu_top_swipe         = "modules/global/patches/menu_top_swipe",
     opds                   = "modules/global/patches/opds",
+    cloud_storage_home     = "modules/global/patches/cloud_storage_home",
     kindle_network_profile_guard = "modules/global/patches/kindle_network_profile_guard",
     lockdown_mode          = "modules/global/patches/lockdown_mode",
     incognito_mode         = "modules/global/patches/incognito_mode",
     menu_font              = "modules/global/patches/menu_font",
+    unified_title_style    = "modules/global/patches/unified_title_style",
 }
 
 local function run_patch(logger, plugin, feature, fn)
@@ -37,6 +39,25 @@ local function load_patch(feature)
     return nil
 end
 
+local function is_koreader_opds_enabled()
+    local settings = rawget(_G, "G_reader_settings")
+    if type(settings) ~= "table" or type(settings.readSetting) ~= "function" then
+        return true
+    end
+    local disabled_plugins = settings:readSetting("plugins_disabled")
+    return type(disabled_plugins) ~= "table" or not disabled_plugins.opds
+end
+
+local function disable_zen_opds(plugin, logger)
+    plugin.config.features.zen_opds = false
+    if type(plugin.saveConfig) == "function" then
+        plugin:saveConfig()
+    end
+    if logger then
+        logger.info("Zen OPDS disabled because KOReader OPDS is disabled")
+    end
+end
+
 function M.init(logger, plugin)
     if initialized then return true end
 
@@ -60,9 +81,20 @@ function M.init(logger, plugin)
         run_patch(logger, plugin, "menu_top_swipe", menu_top_swipe_fn)
     end
 
-    local opds_fn = load_patch("opds")
-    if opds_fn and plugin.config.features.zen_opds ~= false then
-        run_patch(logger, plugin, "opds", opds_fn)
+    if plugin.config.features.zen_opds ~= false then
+        if is_koreader_opds_enabled() then
+            local opds_fn = load_patch("opds")
+            if opds_fn then
+                run_patch(logger, plugin, "opds", opds_fn)
+            end
+        else
+            disable_zen_opds(plugin, logger)
+        end
+    end
+
+    local cloud_storage_home_fn = load_patch("cloud_storage_home")
+    if cloud_storage_home_fn then
+        run_patch(logger, plugin, "cloud_storage_home", cloud_storage_home_fn)
     end
 
     local kindle_network_profile_guard_fn = load_patch("kindle_network_profile_guard")
@@ -88,6 +120,11 @@ function M.init(logger, plugin)
         run_patch(logger, plugin, "menu_font", menu_font_fn)
     end
 
+    local unified_title_style_fn = load_patch("unified_title_style")
+    if unified_title_style_fn then
+        run_patch(logger, plugin, "unified_title_style", unified_title_style_fn)
+    end
+
     -- Hook the global Resume broadcast so schedules are independent of the
     -- active widget. This also covers Android, which broadcasts Resume without
     -- going through Device:_afterResume.
@@ -98,9 +135,13 @@ function M.init(logger, plugin)
         "__ZEN_UI_BRIGHTNESS_SCHEDULE",
         "__ZEN_UI_WARMTH_SCHEDULE",
     }
+    local FRONTLIGHT_SCHEDULE_STATES = {
+        "__ZEN_UI_BRIGHTNESS_SCHEDULE",
+        "__ZEN_UI_WARMTH_SCHEDULE",
+    }
 
-    local function reschedule_schedules()
-        for _i, name in ipairs(SCHEDULE_STATES) do
+    local function reschedule_states(states)
+        for _i, name in ipairs(states) do
             local state = rawget(_G, name)
             if type(state) == "table" then
                 local fn = state.force_reschedule or state.reschedule
@@ -109,14 +150,32 @@ function M.init(logger, plugin)
         end
     end
 
+    local function reschedule_schedules()
+        reschedule_states(SCHEDULE_STATES)
+    end
+
+    local function reapply_frontlight_schedules()
+        reschedule_states(FRONTLIGHT_SCHEDULE_STATES)
+    end
+
+    local function schedule_resume_reapply()
+        UIManager:unschedule(reschedule_schedules)
+        UIManager:unschedule(reapply_frontlight_schedules)
+        UIManager:scheduleIn(0.1, reschedule_schedules)
+        -- Some frontlights ignore writes immediately after resume.
+        UIManager:scheduleIn(1.5, reapply_frontlight_schedules)
+    end
+
     if type(UIManager.broadcastEvent) == "function" then
         local orig_broadcastEvent = UIManager.broadcastEvent
         UIManager.broadcastEvent = function(self, event, ...)
-            local result = orig_broadcastEvent(self, event, ...)
             if event and event.handler == "onResume" then
-                reschedule_schedules()
+                schedule_resume_reapply()
+            elseif event and event.handler == "onSuspend" then
+                UIManager:unschedule(reschedule_schedules)
+                UIManager:unschedule(reapply_frontlight_schedules)
             end
-            return result
+            return orig_broadcastEvent(self, event, ...)
         end
     end
 
@@ -151,13 +210,6 @@ function M.init(logger, plugin)
                 pcall(Screen.setHWNightmode, Screen, want)
                 require("ui/uimanager"):setDirty("all", "full")
             end
-            -- KOReader restores Device.orig_hw_nightmode on exit (the HW flag it
-            -- believes the OS had before launch). After a crash the persisted
-            -- inversion is KOReader's own, but boot mistakes it for the native
-            -- state, so on exit it re-inverts the Kindle home screen and covers.
-            -- The Kindle native state is never inverted (the flag is KOReader's),
-            -- so pin orig back to false to hand the OS a clean screen on exit.
-            Device.orig_hw_nightmode = false
         end
     end
 

@@ -8,7 +8,9 @@ local JSON = require("json")
 local _ = require("gettext")
 local logger = require("common/zen_logger").new("zen_bugreporter")
 local UIManager = require("ui/uimanager")
+local restart = require("common/restart")
 local zen_utils = require("common/utils")
+local updater = require("modules/settings/zen_updater")
 
 local PROXY_URL       = "https://zen-reporter.misty-mud-afb2.workers.dev/"
 local UPLOAD_URL = PROXY_URL .. "upload"
@@ -36,7 +38,7 @@ local function https_post_json(url, payload_str)
         url    = url,
         method = "POST",
         headers = {
-            ["User-Agent"]     = "zen_ui.koplugin",
+            ["User-Agent"]     = "zenos.koplugin",
             ["Content-Type"]   = "application/json",
             ["Content-Length"] = tostring(#payload_str),
         },
@@ -101,7 +103,7 @@ local function build_issue_body(description, system_info, crash_log, github_user
         parts[#parts+1] = "**Reported by:** @" .. github_username
         parts[#parts+1] = ""
     end
-    parts[#parts+1] = "_Submitted via Zen UI in-app bug reporter._"
+    parts[#parts+1] = "_Submitted via ZenOS in-app bug reporter._"
 
     return table.concat(parts, "\n")
 end
@@ -110,8 +112,12 @@ end
 -- Network submission
 -- ---------------------------------------------------------------------------
 
-local function submit_issue(title, body)
-    local payload = JSON.encode({ title = title, body = body, labels = { "bug" } })
+local function submit_issue(title, body, version)
+    local labels = { "bug" }
+    if updater.get_channel() == "beta" or version:find("-alpha", 1, true) then
+        labels[#labels + 1] = "beta"
+    end
+    local payload = JSON.encode({ title = title, body = body, labels = labels })
 
     logger.dbg("POSTing to proxy:", PROXY_URL)
     local code, resp = https_post_json(PROXY_URL, payload)
@@ -119,7 +125,7 @@ local function submit_issue(title, body)
 
     if code == 201 then
         local url = resp and resp:match('"url"%s*:%s*"([^"]+)"')
-        return url or "https://github.com/AnthonyGress/zen_ui.koplugin/issues"
+        return url or "https://github.com/xZenLabs/zen-os/issues"
     elseif code == 429 then
         return nil, _("Too many requests. Please try again later.")
     else
@@ -135,19 +141,27 @@ end
 -- ---------------------------------------------------------------------------
 
 function M.show_dialog(ctx)
+    local isolation_notice = _("Before reporting, please disable other plugins and patches to see if this is actually a ZenOS issue.")
     -- Require debug logging to be on so crash.log is useful.
-    if not (G_reader_settings and G_reader_settings:isTrue("debug_verbose")) then
+    if not (G_reader_settings
+            and G_reader_settings:isTrue("debug")
+            and G_reader_settings:isTrue("debug_verbose")) then
         local ConfirmBox = require("ui/widget/confirmbox")
         UIManager:show(ConfirmBox:new{
             text        = _("Debug logging must be enabled to submit bug reports.")
                        .. "\n\n"
-                       .. _("Enabling debug logging, restart required. Please reproduce the issue, then submit the report."),
+                       .. _("Enabling debug logging, restart required. Please reproduce the issue, then submit the report.")
+                       .. "\n\n" .. isolation_notice,
             ok_text     = _("Restart now"),
             cancel_text = _("Cancel"),
             ok_callback = function()
+                local dbg = require("dbg")
+                G_reader_settings:saveSetting("debug", true)
                 G_reader_settings:saveSetting("debug_verbose", true)
+                dbg:turnOn()
+                dbg:setVerbose(true)
                 G_reader_settings:flush()
-                UIManager:restartKOReader()
+                restart.request()
             end,
         })
         return
@@ -167,7 +181,8 @@ function M.show_dialog(ctx)
 
     local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
-        text    = _("crash.log will be embedded in a public GitHub issue. It may contain file paths and book titles.") .. ("\n\n") .. ("Continue?"),
+        text    = isolation_notice .. "\n\n"
+               .. _("crash.log will be embedded in a public GitHub issue. It may contain file paths and book titles.") .. ("\n\n") .. ("Continue?"),
         ok_text = _("Continue"),
         ok_callback = function()
             M._ask_title(ctx)
@@ -274,11 +289,11 @@ end
 function M._do_submit(ctx, bug_title, description, github_username)
     local InfoMessage = require("ui/widget/infomessage")
 
-    -- Show "Submitting…" then do network work on the next tick so the UI updates first.
+    -- Let the notice paint before starting the blocking network work.
     local spinner = InfoMessage:new{ text = _("Submitting report…") }
     UIManager:show(spinner)
 
-    UIManager:nextTick(function()
+    UIManager:tickAfterNext(function()
         -- Gather system info.
         local ok_u, sutils = pcall(require, "modules/settings/zen_settings_utils")
         local plugin = ctx and ctx.plugin
@@ -287,7 +302,7 @@ function M._do_submit(ctx, bug_title, description, github_username)
         local device   = ok_u and sutils.get_device_model_name()      or "?"
         local firmware = ok_u and sutils.get_device_firmware_display() or "?"
         local language = ok_u and sutils.get_device_language()        or "?"
-        local system_info = "- Zen UI: " .. zen_ver
+        local system_info = "- ZenOS: " .. zen_ver
                          .. "\n- KOReader: " .. ko_ver
                          .. "\n- Device: " .. device
                          .. (firmware ~= "n/a" and ("\n- Firmware: " .. firmware) or "")
@@ -324,7 +339,7 @@ function M._do_submit(ctx, bug_title, description, github_username)
             issue_body = zen_utils.truncateUtf8Bytes(issue_body, MAX_BODY, "\n...[truncated]")
         end
 
-        local issue_url, err = submit_issue(issue_title, issue_body)
+        local issue_url, err = submit_issue(issue_title, issue_body, zen_ver)
 
         UIManager:close(spinner)
 

@@ -4,10 +4,14 @@ M.SENTINEL = "__menu_callback"
 M.SUBMENU = "__menu_submenu"
 
 local EXCLUDED_PLUGINS = {
+    zenos = true,
     zen_ui = true,
 }
 
 local LAUNCH_METHODS = { "onShow", "show", "open", "launch", "onOpen" }
+
+local installed_plugins_scanned = false
+local installed_plugins
 
 local function live_uis()
     local out = {}
@@ -42,6 +46,7 @@ local function enabled_plugin_names()
             names[plugin.name] = true
         end
     end
+    names.zenos = nil
     names.zen_ui = nil
     return names
 end
@@ -88,6 +93,55 @@ local function entry_text(entry)
     return text_without_glyph(entry.text)
 end
 
+local function normalized_path(path)
+    if type(path) ~= "string" then return nil end
+    return path:gsub("/+$", "")
+end
+
+local function plugin_root_name(path)
+    path = normalized_path(path)
+    return path and path:match("([^/]+%.koplugin)$") or nil
+end
+
+function M.installed()
+    if installed_plugins_scanned then return installed_plugins end
+    installed_plugins_scanned = true
+
+    local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+    local ok_root, root = pcall(require, "common/plugin_root")
+    if not ok_lfs or not lfs or not ok_root or type(root) ~= "string" then return nil end
+
+    local directories = {}
+    local parent = normalized_path(root):match("^(.*)/[^/]+$")
+    if parent then directories[parent] = true end
+    local ok_cwd, cwd = pcall(lfs.currentdir)
+    cwd = ok_cwd and normalized_path(cwd) or nil
+    directories[cwd and cwd .. "/plugins" or "plugins"] = true
+    local settings = rawget(_G, "G_reader_settings")
+    local extra = settings and settings:readSetting("extra_plugin_paths")
+    if type(extra) == "string" then extra = { extra } end
+    for _i, path in ipairs(type(extra) == "table" and extra or {}) do
+        path = normalized_path(path)
+        if path then directories[path] = true end
+    end
+
+    local found, scanned = {}, false
+    for directory in pairs(directories) do
+        local ok = pcall(function()
+            for entry in lfs.dir(directory) do
+                local path = directory .. "/" .. entry
+                if entry:sub(-9) == ".koplugin"
+                        and lfs.attributes(path, "mode") == "directory" then
+                    found[entry:sub(1, -10):lower()] = true
+                end
+            end
+        end)
+        scanned = ok or scanned
+    end
+    installed_plugins = scanned and found or nil
+    return installed_plugins
+end
+
 local function find_method(mod, key)
     for _i, method in ipairs(LAUNCH_METHODS) do
         if is_callable(mod[method]) then return method end
@@ -105,10 +159,17 @@ local function find_method(mod, key)
     end
 end
 
-local function add_candidate(out, seen, key, mod)
+local function add_candidate(out, seen, key, mod, pending_index)
     if type(key) ~= "string" or key == "" or EXCLUDED_PLUGINS[key] or seen[key]
             or type(mod) ~= "table" then
         return
+    end
+    local pending
+    if pending_index then
+        local path = normalized_path(mod.path)
+        pending = pending_index.paths[path]
+            or pending_index.names[plugin_root_name(path)]
+        if not pending then return end
     end
     local method = find_method(mod, key)
     if not method then return end
@@ -118,16 +179,21 @@ local function add_candidate(out, seen, key, mod)
     if not title or title == "" then
         title = key:sub(1, 1):upper() .. key:sub(2)
     end
-    out[#out + 1] = { key = key, method = method, title = title }
+    out[#out + 1] = {
+        key = key,
+        method = method,
+        title = title,
+        zenpm_package_id = pending and pending.id or nil,
+    }
 end
 
-function M.scan()
+local function scan(pending_index)
     local ok, results = pcall(function()
         local out, seen = {}, {}
         local loader = plugin_loader()
         if loader and type(loader.loaded_plugins) == "table" then
             for key, mod in pairs(loader.loaded_plugins) do
-                add_candidate(out, seen, key, mod)
+                add_candidate(out, seen, key, mod, pending_index)
             end
         end
 
@@ -136,20 +202,43 @@ function M.scan()
             for key in pairs(names) do
                 local ok_plugin, plugin = pcall(loader.getPluginInstance, loader, key)
                 if ok_plugin then
-                    add_candidate(out, seen, key, plugin)
+                    add_candidate(out, seen, key, plugin, pending_index)
                 end
             end
         end
 
         for _i, ui in ipairs(live_uis()) do
             for key in pairs(names) do
-                add_candidate(out, seen, key, ui[key])
+                add_candidate(out, seen, key, ui[key], pending_index)
             end
         end
         table.sort(out, function(a, b) return a.title < b.title end)
         return out
     end)
     return ok and results or {}
+end
+
+function M.scan()
+    return scan(nil)
+end
+
+function M.scanZenPM(pending)
+    local index = { paths = {}, names = {} }
+    for _i, entry in ipairs(type(pending) == "table" and pending or {}) do
+        local path = normalized_path(type(entry) == "table" and entry.install_path)
+        if path and type(entry.id) == "string" and entry.id ~= "" then
+            index.paths[path] = entry
+            local name = plugin_root_name(path)
+            if name then
+                if index.names[name] == nil then
+                    index.names[name] = entry
+                else
+                    index.names[name] = false
+                end
+            end
+        end
+    end
+    return scan(index)
 end
 
 local function live_plugin(key)

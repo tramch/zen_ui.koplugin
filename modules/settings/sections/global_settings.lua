@@ -6,6 +6,7 @@ local _ = require("gettext")
 local UIManager = require("ui/uimanager")
 local Device = require("device")
 local ConfirmBox = require("ui/widget/confirmbox")
+local restart = require("common/restart")
 local PresetStore = require("config/preset_store")
 local utils = require("modules/settings/zen_settings_utils")
 local icons = require("common/inline_icon_map")
@@ -39,14 +40,13 @@ local function disable_autowarmth()
     G_reader_settings:saveSetting("plugins_disabled", disabled_list)
     G_reader_settings:flush()
     UIManager:scheduleIn(0.5, function()
-        local Event = require("ui/event")
         UIManager:show(ConfirmBox:new{
             text         = _("Incompatible plugins have been disabled:") .. "\nAuto warmth and night mode",
             dismissable  = false,
             no_ok_button = true,
             cancel_text  = _("Restart now"),
             cancel_callback = function()
-                UIManager:broadcastEvent(Event:new("Restart"))
+                restart.request()
             end,
         })
     end)
@@ -54,9 +54,64 @@ end
 
 local M = {}
 
+local function choose_sleep_screen_image()
+    local images_dir = require("datastorage"):getFullDataDir() .. "/resources/screensavers"
+    local current_path = G_reader_settings:readSetting("screensaver_document_cover")
+    local path = images_dir
+    if type(current_path) == "string" and current_path ~= "" then
+        local current_dir = select(1, require("util").splitFilePathName(current_path))
+        if current_dir ~= "" then path = current_dir end
+    end
+    local PathChooser = require("ui/widget/pathchooser")
+    UIManager:show(PathChooser:new{
+        select_directory = false,
+        select_file = true,
+        show_files = true,
+        file_filter = function(filename)
+            return require("document/documentregistry"):hasProvider(filename)
+        end,
+        path = path,
+        goHome = function(chooser)
+            chooser:changeToPath(images_dir)
+            return true
+        end,
+        onConfirm = function(file_path)
+            G_reader_settings:saveSetting("screensaver_document_cover", file_path)
+        end,
+    })
+end
+
+local function install_sleep_screen_image_picker(items)
+    local stock_callback = require("ui/screensaver").chooseFile
+    local function replace(item_table)
+        for _i, item in ipairs(item_table) do
+            if type(item) == "table" then
+                if item.callback == stock_callback then
+                    item.callback = choose_sleep_screen_image
+                    return true
+                end
+                if type(item.sub_item_table) == "table" and replace(item.sub_item_table) then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    replace(items)
+end
+
 function M.build(ctx)
     local config = ctx.config
     local plugin = ctx.plugin
+    local settings_apply = ctx.settings_apply
+
+    local function mode_value_label(mode, setting)
+        return mode .. " " .. setting:lower()
+    end
+
+    local function mode_pair_label(setting)
+        return _("Light mode") .. " / " .. _("Dark mode") .. " " .. setting:lower()
+    end
 
     -- -------------------------------------------------------------------------
     -- Schedule helpers
@@ -90,10 +145,11 @@ function M.build(ctx)
         return {
             day_h       = tonumber(cfg.day_h)       or 7,
             day_m       = tonumber(cfg.day_m)       or 0,
-            day_value   = tonumber(cfg.day_value)   or 30,
+            day_value   = tonumber(cfg.day_value)   or 3,
             night_h     = tonumber(cfg.night_h)     or 20,
             night_m     = tonumber(cfg.night_m)     or 0,
-            night_value = tonumber(cfg.night_value) or 80,
+            night_value = tonumber(cfg.night_value) or 8,
+            use_mode_values = cfg.use_mode_values == true,
         }
     end
 
@@ -112,10 +168,11 @@ function M.build(ctx)
         return {
             day_h       = tonumber(cfg.day_h)       or 7,
             day_m       = tonumber(cfg.day_m)       or 0,
-            day_value   = tonumber(cfg.day_value)   or 80,
+            day_value   = tonumber(cfg.day_value)   or 20,
             night_h     = tonumber(cfg.night_h)     or 20,
             night_m     = tonumber(cfg.night_m)     or 0,
-            night_value = tonumber(cfg.night_value) or 20,
+            night_value = tonumber(cfg.night_value) or 5,
+            use_mode_values = cfg.use_mode_values == true,
         }
     end
 
@@ -169,6 +226,22 @@ function M.build(ctx)
         }
     end
 
+    local function sleep_screen_state_matches(expected)
+        local current = capture_sleep_screen_state()
+        for _i, key in ipairs({
+            "screensaver_type",
+            "screensaver_message",
+            "screensaver_show_message",
+            "screensaver_img_background",
+            "screensaver_document_cover",
+            "screensaver_stretch_images",
+            "screensaver_stretch_limit_percentage",
+        }) do
+            if current[key] ~= expected[key] then return false end
+        end
+        return true
+    end
+
     local function apply_sleep_screen_preset(preset)
         if type(preset) ~= "table" then return end
         if preset.screensaver_type then
@@ -212,6 +285,10 @@ function M.build(ctx)
     local function build_preset_items()
         local all = get_all_presets()
         local preset_items = {}
+        if PresetStore.getActivePreset("screensaver")
+                and not sleep_screen_state_matches(PresetStore.getSettings("screensaver")) then
+            PresetStore.setActivePreset("screensaver", nil)
+        end
 
         table.insert(preset_items, {
             text = _("Save current settings as preset"),
@@ -259,10 +336,10 @@ function M.build(ctx)
             local is_builtin = preset.builtin == true
             local is_last = (i == #all)
             table.insert(preset_items, {
-                text_func = function()
-                    local active = PresetStore.getActivePreset("screensaver")
-                    local prefix = (active == pname) and "\u{2713} " or ""
-                    return prefix .. pname
+                text = pname,
+                radio = true,
+                checked_func = function()
+                    return PresetStore.getActivePreset("screensaver") == pname
                 end,
                 callback = function(touchmenu_instance)
                     apply_sleep_screen_preset(preset)
@@ -304,17 +381,34 @@ function M.build(ctx)
         text = _("Search"),
         sub_item_table = {
             {
+                text = _("Enable Zen Search"),
+                help_text = _("Use Zen Search in the file browser and reader. Disable to use KOReader's default search."),
+                checked_func = function()
+                    return type(config.features) ~= "table"
+                        or config.features.search ~= false
+                end,
+                callback = function(touchmenu_instance)
+                    if type(config.features) ~= "table" then config.features = {} end
+                    config.features.search = config.features.search == false
+                    plugin:saveConfig()
+                    if touchmenu_instance then touchmenu_instance:updateItems() end
+                    settings_apply.prompt_restart()
+                end,
+            },
+            {
                 text = _("Match whole words"),
                 help_text = _("When enabled, search matches whole words only. When disabled, substring matching is used (e.g., 'fish' matches 'fishing')."),
+                enabled_func = function()
+                    return type(config.features) ~= "table"
+                        or config.features.search ~= false
+                end,
                 checked_func = function()
-                    return G_reader_settings:readSetting("substring_search") == false
+                    return type(config.search) == "table" and config.search.substring == false
                 end,
                 callback = function()
-                    if G_reader_settings:readSetting("substring_search") == false then
-                        G_reader_settings:delSetting("substring_search")
-                    else
-                        G_reader_settings:saveSetting("substring_search", false)
-                    end
+                    if type(config.search) ~= "table" then config.search = {} end
+                    config.search.substring = config.search.substring == false
+                    plugin:saveConfig()
                 end,
             },
         },
@@ -392,9 +486,9 @@ function M.build(ctx)
         },
     })
 
-    -- Brightness schedule
+    -- Brightness
     table.insert(items, {
-        text = _("Brightness schedule"),
+        text = _("Brightness"),
         sub_item_table = {
             {
                 text = _("Enable brightness schedule"),
@@ -404,9 +498,29 @@ function M.build(ctx)
                 callback = function()
                     config.features.brightness_schedule =
                         config.features.brightness_schedule ~= true
+                    get_brightness_schedule_config()
+                    config.brightness_schedule.use_mode_values = false
                     plugin:saveConfig()
                     trigger_brightness_schedule_reschedule()
                     if config.features.brightness_schedule then
+                        disable_autowarmth()
+                    end
+                end,
+            },
+            {
+                text = mode_pair_label(_("Brightness")),
+                checked_func = function()
+                    return get_brightness_schedule_config().use_mode_values
+                end,
+                callback = function()
+                    local cfg = get_brightness_schedule_config()
+                    config.brightness_schedule.use_mode_values = not cfg.use_mode_values
+                    if config.brightness_schedule.use_mode_values then
+                        config.features.brightness_schedule = false
+                    end
+                    plugin:saveConfig()
+                    trigger_brightness_schedule_reschedule()
+                    if config.brightness_schedule.use_mode_values then
                         disable_autowarmth()
                     end
                 end,
@@ -438,24 +552,33 @@ function M.build(ctx)
             {
                 text_func = function()
                     local cfg = get_brightness_schedule_config()
-                    return _("Day brightness: ") .. cfg.day_value
+                    if config.features.brightness_schedule == true then
+                        return _("Day brightness: ") .. cfg.day_value
+                    end
+                    return mode_value_label(_("Light mode"), _("Brightness"))
+                        .. ": " .. cfg.day_value
                 end,
                 enabled_func = function()
-                    return config.features.brightness_schedule == true
+                    local cfg = get_brightness_schedule_config()
+                    return config.features.brightness_schedule == true or cfg.use_mode_values
                 end,
                 keep_menu_open = true,
                 callback = function(touchmenu_instance)
                     local cfg = get_brightness_schedule_config()
                     local powerd = Device.powerd
-                    utils.show_value_picker(_("Day brightness"), cfg.day_value,
+                    local title = config.features.brightness_schedule == true
+                        and _("Day brightness")
+                        or mode_value_label(_("Light mode"), _("Brightness"))
+                    utils.show_value_picker(title, cfg.day_value,
                         function(v)
                             if type(config.brightness_schedule) ~= "table" then
                                 config.brightness_schedule = {}
                             end
                             config.brightness_schedule.day_value = v
                             plugin:saveConfig()
+                            trigger_brightness_schedule_reschedule()
                             if touchmenu_instance then touchmenu_instance:updateItems() end
-                        end, powerd.fl_min, powerd.fl_max)
+                        end, 0, powerd.fl_max)
                 end,
             },
             {
@@ -485,32 +608,41 @@ function M.build(ctx)
             {
                 text_func = function()
                     local cfg = get_brightness_schedule_config()
-                    return _("Night brightness: ") .. cfg.night_value
+                    if config.features.brightness_schedule == true then
+                        return _("Night brightness: ") .. cfg.night_value
+                    end
+                    return mode_value_label(_("Dark mode"), _("Brightness"))
+                        .. ": " .. cfg.night_value
                 end,
                 enabled_func = function()
-                    return config.features.brightness_schedule == true
+                    local cfg = get_brightness_schedule_config()
+                    return config.features.brightness_schedule == true or cfg.use_mode_values
                 end,
                 keep_menu_open = true,
                 callback = function(touchmenu_instance)
                     local cfg = get_brightness_schedule_config()
                     local powerd = Device.powerd
-                    utils.show_value_picker(_("Night brightness"), cfg.night_value,
+                    local title = config.features.brightness_schedule == true
+                        and _("Night brightness")
+                        or mode_value_label(_("Dark mode"), _("Brightness"))
+                    utils.show_value_picker(title, cfg.night_value,
                         function(v)
                             if type(config.brightness_schedule) ~= "table" then
                                 config.brightness_schedule = {}
                             end
                             config.brightness_schedule.night_value = v
                             plugin:saveConfig()
+                            trigger_brightness_schedule_reschedule()
                             if touchmenu_instance then touchmenu_instance:updateItems() end
-                        end, powerd.fl_min, powerd.fl_max)
+                        end, 0, powerd.fl_max)
                 end,
             },
         },
     })
 
-    -- Warmth schedule
+    -- Warmth
     table.insert(items, {
-        text = _("Warmth schedule"),
+        text = _("Warmth"),
         enabled_func = function() return Device:hasNaturalLight() end,
         sub_item_table = {
             {
@@ -520,9 +652,29 @@ function M.build(ctx)
                 end,
                 callback = function()
                     config.features.warmth_schedule = config.features.warmth_schedule ~= true
+                    get_warmth_schedule_config()
+                    config.warmth_schedule.use_mode_values = false
                     plugin:saveConfig()
                     trigger_warmth_schedule_reschedule()
                     if config.features.warmth_schedule then
+                        disable_autowarmth()
+                    end
+                end,
+            },
+            {
+                text = mode_pair_label(_("Warmth")),
+                checked_func = function()
+                    return get_warmth_schedule_config().use_mode_values
+                end,
+                callback = function()
+                    local cfg = get_warmth_schedule_config()
+                    config.warmth_schedule.use_mode_values = not cfg.use_mode_values
+                    if config.warmth_schedule.use_mode_values then
+                        config.features.warmth_schedule = false
+                    end
+                    plugin:saveConfig()
+                    trigger_warmth_schedule_reschedule()
+                    if config.warmth_schedule.use_mode_values then
                         disable_autowarmth()
                     end
                 end,
@@ -554,22 +706,31 @@ function M.build(ctx)
             {
                 text_func = function()
                     local cfg = get_warmth_schedule_config()
-                    return _("Day warmth: ") .. cfg.day_value
+                    if config.features.warmth_schedule == true then
+                        return _("Day warmth: ") .. cfg.day_value
+                    end
+                    return mode_value_label(_("Light mode"), _("Warmth"))
+                        .. ": " .. cfg.day_value
                 end,
                 enabled_func = function()
-                    return config.features.warmth_schedule == true
+                    local cfg = get_warmth_schedule_config()
+                    return config.features.warmth_schedule == true or cfg.use_mode_values
                 end,
                 keep_menu_open = true,
                 callback = function(touchmenu_instance)
                     local cfg = get_warmth_schedule_config()
                     local powerd = Device.powerd
-                    utils.show_value_picker(_("Day warmth"), cfg.day_value,
+                    local title = config.features.warmth_schedule == true
+                        and _("Day warmth")
+                        or mode_value_label(_("Light mode"), _("Warmth"))
+                    utils.show_value_picker(title, cfg.day_value,
                         function(v)
                             if type(config.warmth_schedule) ~= "table" then
                                 config.warmth_schedule = {}
                             end
                             config.warmth_schedule.day_value = v
                             plugin:saveConfig()
+                            trigger_warmth_schedule_reschedule()
                             if touchmenu_instance then touchmenu_instance:updateItems() end
                         end, powerd.fl_warmth_min, powerd.fl_warmth_max)
                 end,
@@ -601,22 +762,31 @@ function M.build(ctx)
             {
                 text_func = function()
                     local cfg = get_warmth_schedule_config()
-                    return _("Night warmth: ") .. cfg.night_value
+                    if config.features.warmth_schedule == true then
+                        return _("Night warmth: ") .. cfg.night_value
+                    end
+                    return mode_value_label(_("Dark mode"), _("Warmth"))
+                        .. ": " .. cfg.night_value
                 end,
                 enabled_func = function()
-                    return config.features.warmth_schedule == true
+                    local cfg = get_warmth_schedule_config()
+                    return config.features.warmth_schedule == true or cfg.use_mode_values
                 end,
                 keep_menu_open = true,
                 callback = function(touchmenu_instance)
                     local cfg = get_warmth_schedule_config()
                     local powerd = Device.powerd
-                    utils.show_value_picker(_("Night warmth"), cfg.night_value,
+                    local title = config.features.warmth_schedule == true
+                        and _("Night warmth")
+                        or mode_value_label(_("Dark mode"), _("Warmth"))
+                    utils.show_value_picker(title, cfg.night_value,
                         function(v)
                             if type(config.warmth_schedule) ~= "table" then
                                 config.warmth_schedule = {}
                             end
                             config.warmth_schedule.night_value = v
                             plugin:saveConfig()
+                            trigger_warmth_schedule_reschedule()
                             if touchmenu_instance then touchmenu_instance:updateItems() end
                         end, powerd.fl_warmth_min, powerd.fl_warmth_max)
                 end,
@@ -635,6 +805,7 @@ function M.build(ctx)
         sub_item_table_func = function()
             local ok, screen_items = pcall(dofile, "frontend/ui/elements/screensaver_menu.lua")
             local sub = (ok and type(screen_items) == "table") and screen_items or {}
+            if ok then install_sleep_screen_image_picker(sub) end
             table.insert(sub, {
                 text = _("Presets"),
                 sub_item_table_func = build_preset_items,

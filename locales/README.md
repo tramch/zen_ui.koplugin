@@ -1,11 +1,11 @@
 ---
 ---
 
-# Zen UI Locales
+# ZenOS Locales
 
-This folder contains gettext `.po` files for Zen UI plugin labels.
+This folder contains gettext `.po` files for ZenOS plugin labels.
 
-The `en.po` file is the source catalog (~254 strings). All other locale files
+The `en.po` file is the source catalog. All other locale files
 are translated from it. Strings with an empty `msgstr ""` fall back to English
 at runtime — KOReader handles this automatically.
 
@@ -21,13 +21,20 @@ at runtime — KOReader handles this automatically.
 | `de` | German |
 | `bg` | Bulgarian |
 | `cs` | Czech |
+| `hu` | Hungarian |
+| `id` | Indonesian |
 | `pt_BR` | Brazilian Portuguese |
 | `pt_PT` | European Portuguese |
 | `ro` | Romanian |
 | `ru` | Russian |
 | `uk` | Ukrainian |
+| `el` | Greek |
+| `ja` | Japanese |
+| `vi` | Vietnamese |
 | `zh_CN` | Simplified Chinese |
 | `zh_TW` | Traditional Chinese |
+| `zh_HK` | Traditional Chinese (Hong Kong) |
+| `zh_MO` | Traditional Chinese (Macau) |
 
 ## Contributing
 
@@ -38,7 +45,13 @@ the English source string.
 
 ## Maintenance
 
-Synchronize every catalog with the Lua source in one command:
+Put the Cloud Translation key in the ignored project `.env` file:
+
+```dotenv
+GOOGLE_TRANSLATE_API_KEY=your-cloud-translation-api-key
+```
+
+Then synchronize every catalog with the Lua source:
 
 ```sh
 python3 translation_utils.py --sync
@@ -46,5 +59,10 @@ python3 translation_utils.py --sync
 
 This removes dead entries, adds missing entries, translates empty `msgstr`
 values, and alphabetizes each catalog. Untranslated English strings are sent to
-Google Translate; existing translations are preserved. Use `--locale LOCALE`
-to process only one catalog.
+Google Cloud Translation Basic; existing translations are preserved. Enable the
+Cloud Translation API for the key first. Use `--locale LOCALE`
+to process only one catalog. Generated entries include nearby Lua context and
+`filename.lua:line` references for translators.
+
+The project `.env` file is ignored by Git. An exported
+`GOOGLE_TRANSLATE_API_KEY` takes precedence when both are present.
