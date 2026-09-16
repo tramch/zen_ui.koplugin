@@ -122,6 +122,26 @@ describe("library navigation", function()
         assert.is_nil(_G.__ZEN_UI_OPEN_TARGET_TAG)
     end)
 
+    it("treats a dispatched Archive folder as a direct root without Navbar", function()
+        local chooser = {
+            changeToPath = function(self, path) self.path = path end,
+        }
+        ZenSpec.replace("apps/filemanager/filemanager", { instance = {
+            file_chooser = chooser,
+        } })
+        local Paths = require("common/paths")
+        Paths.getArchiveDir = function() return "/archive" end
+        Paths.isArchiveRoot = function(path) return path == "/archive" end
+
+        Navigation.showFromReader(reader(), {
+            config = { features = { restore_library_view = true } },
+        }, { target_folder = "/archive" })
+
+        assert.are.equal("/archive", chooser.path)
+        assert.are.equal("/archive", chooser._zen_direct_archive_root)
+        assert.is_true(chooser._zen_opening_archive_root)
+    end)
+
     it("uses Navbar folder navigation when FileManager survives Reader teardown", function()
         local direct_changes = {}
         local navbar_opens = {}

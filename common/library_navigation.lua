@@ -127,6 +127,10 @@ function M.showFromReader(ui, plugin, opts)
                 if type(open_folder) == "function" then
                     open_folder(target_folder)
                 else
+                    local direct_archive = paths.isArchiveRoot(target_folder)
+                    fm.file_chooser._zen_direct_archive_root = direct_archive
+                        and paths.getArchiveDir() or nil
+                    fm.file_chooser._zen_opening_archive_root = direct_archive or nil
                     fm.file_chooser:changeToPath(target_folder)
                 end
             end

@@ -412,6 +412,7 @@ describe("file browser guard patches", function()
         ZenSpec.replace("ui/widget/filechooser", FileChooser)
         ZenSpec.replace("ui/bidi", { mirroredUILayout = function() return false end })
         ZenSpec.replace("common/paths", {
+            normPath = function(path) return path end,
             isHomeRoot = function(path) return path == "/library" end,
             isHomeLocked = function() return home_locked end,
         })
@@ -454,6 +455,7 @@ describe("file browser guard patches", function()
         ZenSpec.replace("ui/widget/filechooser", FileChooser)
         ZenSpec.replace("ui/bidi", { mirroredUILayout = function() return false end })
         ZenSpec.replace("common/paths", {
+            normPath = function(path) return path end,
             isHomeRoot = function() return true end,
             isHomeLocked = function() return true end,
         })
@@ -481,6 +483,56 @@ describe("file browser guard patches", function()
         local items = FileChooser.genItemTable(chooser, {}, {}, "/library")
         assert.are.equal(1, #items)
         assert.are.equal("home", button.icon)
+    end)
+
+    it("hides folder-up only when Archive was opened directly", function()
+        local FileChooser = {
+            genItemTable = function(self) return self.stock_items end,
+            changeToPath = function(self, path) self.path = path end,
+        }
+        ZenSpec.replace("ui/widget/filechooser", FileChooser)
+        ZenSpec.replace("ui/bidi", { mirroredUILayout = function() return false end })
+        ZenSpec.replace("common/paths", {
+            normPath = function(path) return path end,
+            isHomeRoot = function() return false end,
+            isHomeLocked = function() return false end,
+        })
+        _G.__ZEN_UI_PLUGIN = {
+            config = {
+                features = { browser_hide_up_folder = false },
+                browser_hide_up_folder = { hide_up_folder = false },
+            },
+        }
+
+        apply_patch("modules/filebrowser/patches/browser_hide_up_folder")
+        local button = { setIcon = function(self, icon) self.icon = icon end }
+        local chooser = {
+            name = "filemanager",
+            _zen_direct_archive_root = "/archive",
+            stock_items = {
+                { path = "/archive/..", text = "\u{2B06} ..", is_go_up = true },
+                { path = "/archive/book.epub", text = "Book" },
+            },
+            title_bar = {
+                left_button = button,
+                left_icon_tap_callback = function() return "home" end,
+            },
+        }
+        setmetatable(chooser, { __index = FileChooser })
+
+        local items = FileChooser.genItemTable(chooser, {}, {}, "/archive")
+
+        assert.are.equal(1, #items)
+        assert.are.equal("home", button.icon)
+
+        chooser._zen_opening_archive_root = true
+        chooser:changeToPath("/archive")
+        assert.are.equal("/archive", chooser._zen_direct_archive_root)
+
+        chooser:changeToPath("/library/archive")
+        assert.is_nil(chooser._zen_direct_archive_root)
+        items = FileChooser.genItemTable(chooser, {}, {}, "/archive")
+        assert.are.equal(2, #items)
     end)
 
     it("makes every movable container unmovable and consumes drag callbacks", function()

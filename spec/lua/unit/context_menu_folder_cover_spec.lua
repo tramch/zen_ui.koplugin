@@ -61,13 +61,18 @@ describe("folder cover context-menu integration", function()
         replace("ui/widget/pathchooser", deps.PathChooser or Widget)
         replace("ui/uimanager", deps.UIManager or {})
         replace("gettext", callable_gettext())
+        replace("common/archive_actions", deps.ArchiveActions or {
+            contextRow = function() end,
+        })
         replace("common/book_status", {})
         replace("config/manager", deps.ConfigManager or {})
         replace("common/folder_cover_files", deps.Files)
         replace("common/ui/folder_cover_picker", deps.FolderCoverPicker or {
             show = function() end,
         })
-        replace("common/paths", deps.paths or {})
+        local paths = deps.paths or {}
+        paths.isInThemedDir = paths.isInThemedDir or paths.isInHomeDir
+        replace("common/paths", paths)
         replace("common/shared_state", deps.SharedState or {})
         replace("common/inline_icon_map", {
             arrow_right = ">",
@@ -729,6 +734,11 @@ describe("folder cover context-menu integration", function()
                     refreshed[#refreshed + 1] = file
                 end,
             },
+            ArchiveActions = {
+                contextRow = function()
+                    return {{ text = "\u{F19C}  Archive" }}
+                end,
+            },
             paths = {
                 getHomeDir = function() return "/library" end,
                 isInHomeDir = function() return true end,
@@ -745,9 +755,11 @@ describe("folder cover context-menu integration", function()
             _zen_collection_name = "Test",
         })
         local dialog = shown[#shown]
+        assert.is_nil(find_button(dialog, "Archive"))
         assert.is_nil(find_button(dialog, "More"))
         assert.is_nil(plugin_args)
 
+        context_menu_config.show_archive = true
         context_menu_config.show_plugin_actions = true
         file_chooser:showFileDialog({
             path = "/library/book.epub",
@@ -755,6 +767,7 @@ describe("folder cover context-menu integration", function()
             _zen_collection_name = "Test",
         })
         dialog = shown[#shown]
+        assert.matches("\u{F19C}", assert(find_button(dialog, "Archive")).text, 1, true)
         local more = assert(find_button(dialog, "More"))
         assert.matches("more-icon", more.text, 1, true)
         more.callback()
