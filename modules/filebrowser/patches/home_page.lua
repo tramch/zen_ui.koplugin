@@ -3096,10 +3096,10 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                     content_bounds.min_shift = 0
                     content_bounds.max_shift = 0
                 elseif content_bounds.lock_shift ~= true then
-                    -- Borrow surrounding blank space when internal slack is too small.
-                    local slack = i == #rows and row_gap * 3 or row_gap
-                    content_bounds.min_shift = (content_bounds.min_shift or 0) - slack
-                    content_bounds.max_shift = (content_bounds.max_shift or 0) + slack
+                    -- Reposition content without changing its grid-sized row.
+                    content_bounds.min_shift = (content_bounds.min_shift or 0) - row_y
+                    content_bounds.max_shift = (content_bounds.max_shift or 0)
+                        + math.max(0, body_h - row_y - h)
                 else
                     content_bounds.min_shift = tonumber(content_bounds.min_shift) or 0
                     content_bounds.max_shift = content_bounds.min_shift
