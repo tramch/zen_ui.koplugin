@@ -80,7 +80,7 @@ function M.showFromReader(ui, plugin, opts)
 
     closeConfigMenuForTransition(ui)
     closeReaderOverlays(ui)
-    if M.returnToRakuyomiReader(restore, plugin) then
+    if not opts.after_close and M.returnToRakuyomiReader(restore, plugin) then
         return true
     end
 
@@ -106,6 +106,7 @@ function M.showFromReader(ui, plugin, opts)
     end
 
     ui:onClose()
+    if opts.after_close then opts.after_close() end
     if can_show_file_manager then
         ui:showFileManager(file)
         hideRestoredItemUnderline(plugin)

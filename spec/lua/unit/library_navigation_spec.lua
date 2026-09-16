@@ -85,6 +85,33 @@ describe("library navigation", function()
         assert.are.equal("history", _G.__ZEN_UI_OPEN_TARGET_TAB)
     end)
 
+    it("runs a post-close action after releasing the document and before opening its folder", function()
+        local order = {}
+        ZenSpec.replace("MangaReader", {
+            is_showing = true,
+            onReturn = function() error("archive must close ReaderUI") end,
+        })
+        local ui = reader("/library/Fiction/Book.epub")
+        function ui:onClose()
+            order[#order + 1] = "close"
+            self.document = nil
+        end
+        function ui:showFileManager()
+            order[#order + 1] = "open"
+        end
+
+        Navigation.showFromReader(ui, nil, {
+            target_folder = "/library/Fiction/",
+            after_close = function()
+                assert.is_nil(ui.document)
+                order[#order + 1] = "move"
+            end,
+        })
+
+        assert.are.same({ "close", "move", "open" }, order)
+        assert.are.equal("/library/Fiction/", _G.__ZEN_UI_OPEN_TARGET_FOLDER)
+    end)
+
     it("returns to the file manager with a requested specific tag", function()
         local ui = reader()
         local plugin = { config = { features = { restore_library_view = true } } }

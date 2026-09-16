@@ -177,4 +177,80 @@ describe("archive actions", function()
         }, locations)
         assert.is_nil(saved.library_archive_original_dirs["/archive/book.epub"])
     end)
+
+    it("archives an end-of-book EPUB after Reader closes and before navigation", function()
+        local order = {}
+        local ui = {
+            document = { file = "/library/book.epub" },
+            doc_settings = {
+                flush = function() order[#order + 1] = "flush" end,
+            },
+        }
+        local status = {
+            ui = ui,
+            document = ui.document,
+            markBook = function(_, complete)
+                assert.is_true(complete)
+                order[#order + 1] = "complete"
+            end,
+        }
+        local fm = require("apps/filemanager/filemanager")
+        local move_file = fm.moveFile
+        fm.moveFile = function(...)
+            assert.is_nil(ui.document)
+            order[#order + 1] = "move"
+            return move_file(...)
+        end
+        ZenSpec.replace("common/library_navigation", {
+            showFromReader = function(reader, _, options)
+                assert.are.equal(ui, reader)
+                assert.are.equal("/library/", options.target_folder)
+                order[#order + 1] = "close"
+                ui.document = nil
+                options.after_close()
+                order[#order + 1] = "open"
+                assert.are.same({
+                    { "/library/book.epub", "/archive/book.epub" },
+                }, locations)
+                assert.are.equal("/library/",
+                    saved.library_archive_original_dirs["/archive/book.epub"])
+            end,
+        })
+        local ArchiveActions = require("common/archive_actions")
+
+        assert.is_true(ArchiveActions.markCompleteAndArchive(status, {}))
+        shown[1].ok_callback()
+
+        assert.are.same({ "complete", "flush", "close", "move", "open" }, order)
+        assert.are.same({ { "/library/book.epub", "/archive/" } }, moves)
+    end)
+
+    it("returns to the source folder without archiving metadata if the move fails", function()
+        local fm = require("apps/filemanager/filemanager")
+        fm.moveFile = function() return false end
+        local opened_folder
+        ZenSpec.replace("common/library_navigation", {
+            showFromReader = function(_, _, options)
+                options.after_close()
+                opened_folder = options.target_folder
+            end,
+        })
+        local ui = {
+            document = { file = "/library/book.epub" },
+            doc_settings = { flush = function() end },
+        }
+        local status = {
+            ui = ui,
+            document = ui.document,
+            markBook = function() end,
+        }
+
+        require("common/archive_actions").markCompleteAndArchive(status)
+        shown[1].ok_callback()
+
+        assert.are.equal("/library/", opened_folder)
+        assert.are.equal("Failed to move book to archive.", shown[#shown].text)
+        assert.are.same({}, locations)
+        assert.is_nil(saved.library_archive_original_dirs["/archive/book.epub"])
+    end)
 end)

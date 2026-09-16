@@ -7,6 +7,7 @@ local LuaSettings = require("luasettings")
 local UIManager = require("ui/uimanager")
 local lfs = require("libs/libkoreader-lfs")
 local icons = require("common/inline_icon_map")
+local library_navigation = require("common/library_navigation")
 local paths = require("common/paths")
 local util = require("util")
 local _ = require("gettext")
@@ -242,26 +243,25 @@ function M.markCompleteAndArchive(reader_status, status_widget)
 
     local settings = LuaSettings:open(settings_path)
     local original_dirs = settings:readSetting(original_dirs_key) or {}
-    original_dirs[destination] = source_dir
 
     confirm_action(_("Archive this book?"), _("Archive"), function()
         reader_status:markBook(true)
         reader_status.ui.doc_settings:flush()
         if status_widget then UIManager:close(status_widget) end
-        reader_status.ui:onClose()
-
-        UIManager:nextTick(function()
-            if FileManager:moveFile(file, archive) then
-                update_location(file, destination)
-                settings:saveSetting(original_dirs_key, original_dirs)
-                settings:flush()
-                FileManager:showFiles(source_dir)
-                show_message(_("Book moved to archive."))
-            else
-                FileManager:showFiles(source_dir, file)
-                show_message(_("Failed to move book to archive."))
-            end
-        end)
+        library_navigation.showFromReader(reader_status.ui, rawget(_G, "__ZEN_UI_PLUGIN"), {
+            target_folder = source_dir,
+            after_close = function()
+                local message = _("Failed to move book to archive.")
+                if FileManager:moveFile(file, archive) then
+                    update_location(file, destination)
+                    original_dirs[destination] = source_dir
+                    settings:saveSetting(original_dirs_key, original_dirs)
+                    settings:flush()
+                    message = _("Book moved to archive.")
+                end
+                UIManager:nextTick(function() show_message(message) end)
+            end,
+        })
     end)
     return true
 end
