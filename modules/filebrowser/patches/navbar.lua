@@ -1055,7 +1055,9 @@ local function apply_navbar()
     end
 
     local function revealFileManager(fm, fc)
-        local was_hidden = fileManagerIsHidden(fm, fc)
+        local revealed = fileManagerIsHidden(fm, fc)
+            or fm and fm._zen_hidden_home_startup == true
+            or fc and fc._zen_hidden_home_startup == true
         local fm_parent = fm and fm.show_parent
         local fc_parent = fc and fc.show_parent
         local function reveal(widget)
@@ -1068,7 +1070,7 @@ local function apply_navbar()
         reveal(fc)
         reveal(fm_parent)
         reveal(fc_parent)
-        return was_hidden
+        return revealed
     end
 
     local function onTabBooks()
@@ -1195,7 +1197,6 @@ local function apply_navbar()
                 fc._zen_opening_archive_root = direct_archive or nil
                 fc:changeToPath(folder_path)
             end
-            setActiveTab(tab_id)
         end
         if was_hidden then
             local original_set_dirty = UIManager.setDirty
@@ -1209,7 +1210,12 @@ local function apply_navbar()
 
         local revealed = revealFileManager(fm, fc)
         utils.closeWidgetsAbove(fm_stack_widget or fm)
-        if revealed then UIManager:setDirty(fm_stack_widget or fm, "ui") end
+        if revealed then
+            if type(fc._zen_resume_visible_cover_work) == "function" then
+                fc:_zen_resume_visible_cover_work()
+            end
+        end
+        setActiveTab(tab_id)
         return true, folder_path
     end
 

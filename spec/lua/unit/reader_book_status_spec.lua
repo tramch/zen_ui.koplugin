@@ -363,7 +363,9 @@ describe("reader book status", function()
 
         BookStatusWidget.getStatusContent(status, 400)
 
-        assert.are.equal("Mark as complete and archive", buttons[3].text)
+        assert.are.equal("Archive", buttons[3].text)
+        assert.same(buttons[1], status.generated_rate_group[1][1][1][1])
+        assert.same(buttons[3], status.generated_rate_group[1][1][1][3])
         assert.same({ buttons[3] }, status.layout[3])
         buttons[3].callback()
         assert.are.equal(1, archive_calls)

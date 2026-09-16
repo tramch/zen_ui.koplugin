@@ -6348,9 +6348,6 @@ msgstr "Failed to move book to archive."
 msgid "Failed to move book."
 msgstr "Failed to move book."
 
-msgid "Mark as complete and archive"
-msgstr "Mark as complete and archive"
-
 msgid "Remove from archive"
 msgstr "Remove from archive"
 

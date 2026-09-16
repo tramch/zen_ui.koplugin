@@ -248,8 +248,8 @@ local function apply_book_status()
         local archive_button
         if not self.readonly and archive_actions.canArchive(file) then
             archive_button = Button:new{
-                text = _("Mark as complete and archive"),
-                width = math.floor(width * 0.55),
+                text = _("Archive"),
+                width = action_width,
                 show_parent = self,
                 callback = function()
                     local reader_status = self.ui and self.ui.status
@@ -261,16 +261,24 @@ local function apply_book_status()
         end
         local orig_generateRateGroup = BookStatusWidget.generateRateGroup
         self.generateRateGroup = function(s, w, h, rating)
+            local restart_stack = restart_book_btn
+            if archive_button then
+                restart_stack = VerticalGroup:new{
+                    restart_book_btn,
+                    VerticalSpan:new{ width = action_gap },
+                    archive_button,
+                }
+            end
             local btn_row
             if next_file_btn then
                 btn_row = HorizontalGroup:new{
                     align = "center",
-                    restart_book_btn,
+                    restart_stack,
                     HorizontalSpan:new{ width = action_gap },
                     next_file_btn,
                 }
             else
-                btn_row = restart_book_btn
+                btn_row = restart_stack
             end
             if is_landscape then
                 local btn_row_width = action_width
@@ -294,6 +302,9 @@ local function apply_book_status()
             end
             local stars = orig_generateRateGroup(s, w, h, rating)
             local btn_h = restart_book_btn:getSize().h
+            if archive_button then
+                btn_h = btn_h + action_gap + archive_button:getSize().h
+            end
             return VerticalGroup:new{
                 CenterContainer:new{
                     dimen = Geom:new{ w = w, h = btn_h },
@@ -334,12 +345,6 @@ local function apply_book_status()
             title_bar,
             book_info_group,
         }
-        if archive_button then
-            content_items[#content_items + 1] = CenterContainer:new{
-                dimen = Geom:new{ w = width, h = archive_button:getSize().h },
-                archive_button,
-            }
-        end
         for _i, widget in ipairs({
             stats_header,
             self:genStatisticsGroup(width),

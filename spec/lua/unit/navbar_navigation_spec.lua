@@ -1244,6 +1244,36 @@ describe("file browser navbar navigation", function()
         assert.are.equal("/archive", FileManager.instance.file_chooser._zen_direct_archive_root)
     end)
 
+    it("resumes deferred covers when Archive replaces a visible Home startup", function()
+        local fm = make_instance()
+        local fc = fm.file_chooser
+        fm._zen_hidden_home_startup = true
+        fc._zen_hidden_home_startup = true
+        local suspended_cover_jobs = 0
+        local cover_resume_calls = 0
+        fc._zen_resume_visible_cover_work = function()
+            cover_resume_calls = cover_resume_calls + 1
+            assert.are.equal(2, suspended_cover_jobs)
+            suspended_cover_jobs = 0
+            return true
+        end
+        fc._zen_cancel_hidden_folder_prewarm = function(_self, _reason, mode)
+            if mode == "discard" then suspended_cover_jobs = 0 end
+        end
+        fc.changeToPath = function(_, path)
+            calls[#calls + 1] = "books:" .. path
+            suspended_cover_jobs = 2
+        end
+        calls = {}
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("archive"))
+
+        assert.are.same({ "books:/archive" }, calls)
+        assert.is_nil(fm._zen_hidden_home_startup)
+        assert.is_nil(fc._zen_hidden_home_startup)
+        assert.are.equal(1, cover_resume_calls)
+    end)
+
     it("keeps Library active when Folder contains the library root", function()
         local fm = make_instance()
         _G.__ZEN_UI_PLUGIN.config.navbar.folder_path = "/"
