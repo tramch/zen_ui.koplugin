@@ -238,7 +238,7 @@ local function apply_navbar()
         {
             id = "archive",
             label = _("Archive"),
-            icon = "quick_calibre",
+            icon = utils.resolveLocalIcon(_icons_dir, "archive"),
         },
         {
             id = "folder",
@@ -1180,6 +1180,9 @@ local function apply_navbar()
         local function buildFolder()
             fc._zen_needs_full_listing = nil
             fc._zen_needs_cover_refresh = nil
+            local archive_root = normalizeFolderPath(paths.getArchiveDir())
+            local direct_archive = tab_id == "archive" and paths.isArchiveRoot(folder_path)
+            fc._zen_direct_archive_root = direct_archive and archive_root or nil
             local current_path = normalizeFolderPath(fc.path)
             if current_path == folder_path then
                 if listing_deferred and type(fc.refreshPath) == "function" then
@@ -1189,6 +1192,7 @@ local function apply_navbar()
                 end
             else
                 fc.path_items[folder_path] = nil
+                fc._zen_opening_archive_root = direct_archive or nil
                 fc:changeToPath(folder_path)
             end
             setActiveTab(tab_id)

@@ -6,6 +6,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local LuaSettings = require("luasettings")
 local UIManager = require("ui/uimanager")
 local lfs = require("libs/libkoreader-lfs")
+local icons = require("common/inline_icon_map")
 local paths = require("common/paths")
 local util = require("util")
 local _ = require("gettext")
@@ -41,6 +42,14 @@ end
 
 local function show_message(text)
     UIManager:show(InfoMessage:new{ text = text, timeout = 3 })
+end
+
+local function confirm_action(text, ok_text, callback)
+    UIManager:show(ConfirmBox:new{
+        text = text,
+        ok_text = ok_text,
+        ok_callback = callback,
+    })
 end
 
 local function update_location(source, destination)
@@ -144,7 +153,7 @@ function M.contextRow(fm, file, is_file)
     local archive = archive_dir()
     if not archive or lfs.attributes(archive, "mode") ~= "directory" then
         return {{
-            text = "\u{F07C}  " .. _("Move to archive"),
+            text = icons.archive .. "  " .. _("Archive"),
             align = "left",
             callback = function()
                 close_file_dialogs(fm)
@@ -165,35 +174,39 @@ function M.contextRow(fm, file, is_file)
 
     if is_in_archive(file, archive) then
         return {{
-            text = "\u{F07C}  " .. _("Move to library"),
+            text = icons.archive .. "  " .. _("Remove from archive"),
             align = "left",
             enabled = not currently_open,
             callback = function()
-                local destination = original_dirs[file]
-                    or G_reader_settings:readSetting("home_dir")
+                local destination = paths.getHomeDir()
                 if not destination
                         or lfs.attributes(destination, "mode") ~= "directory" then
                     show_message(_("Set a HOME folder in File Manager first."))
                     return
                 end
-                original_dirs[file] = nil
-                if move_book(fm, file, destination, original_dirs) then
-                    show_message(_("Book moved to library."))
-                end
+                confirm_action(_("Remove this book from archive?"), _("Remove from archive"),
+                    function()
+                        original_dirs[file] = nil
+                        if move_book(fm, file, destination, original_dirs) then
+                            show_message(_("Book moved to library."))
+                        end
+                    end)
             end,
         }}
     end
 
     return {{
-        text = "\u{F07C}  " .. _("Move to archive"),
+        text = icons.archive .. "  " .. _("Archive"),
         align = "left",
         enabled = not currently_open,
         callback = function()
-            local filename = select(2, util.splitFilePathName(file))
-            original_dirs[archive .. filename] = parent_dir(file)
-            if move_book(fm, file, archive, original_dirs) then
-                show_message(_("Book moved to archive."))
-            end
+            confirm_action(_("Archive this book?"), _("Archive"), function()
+                local filename = select(2, util.splitFilePathName(file))
+                original_dirs[archive .. filename] = parent_dir(file)
+                if move_book(fm, file, archive, original_dirs) then
+                    show_message(_("Book moved to archive."))
+                end
+            end)
         end,
     }}
 end
@@ -231,22 +244,24 @@ function M.markCompleteAndArchive(reader_status, status_widget)
     local original_dirs = settings:readSetting(original_dirs_key) or {}
     original_dirs[destination] = source_dir
 
-    reader_status:markBook(true)
-    reader_status.ui.doc_settings:flush()
-    if status_widget then UIManager:close(status_widget) end
-    reader_status.ui:onClose()
+    confirm_action(_("Archive this book?"), _("Archive"), function()
+        reader_status:markBook(true)
+        reader_status.ui.doc_settings:flush()
+        if status_widget then UIManager:close(status_widget) end
+        reader_status.ui:onClose()
 
-    UIManager:nextTick(function()
-        if FileManager:moveFile(file, archive) then
-            update_location(file, destination)
-            settings:saveSetting(original_dirs_key, original_dirs)
-            settings:flush()
-            FileManager:showFiles(source_dir)
-            show_message(_("Book marked as complete and moved to archive."))
-        else
-            FileManager:showFiles(source_dir, file)
-            show_message(_("Failed to move book to archive."))
-        end
+        UIManager:nextTick(function()
+            if FileManager:moveFile(file, archive) then
+                update_location(file, destination)
+                settings:saveSetting(original_dirs_key, original_dirs)
+                settings:flush()
+                FileManager:showFiles(source_dir)
+                show_message(_("Book marked as complete and moved to archive."))
+            else
+                FileManager:showFiles(source_dir, file)
+                show_message(_("Failed to move book to archive."))
+            end
+        end)
     end)
     return true
 end

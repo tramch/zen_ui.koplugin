@@ -422,4 +422,44 @@ describe("file manager status bar visibility", function()
             "/library/Fiction/Series", file_manager))
         assert.are.equal(1, back_buttons)
     end)
+
+    it("hides back only for a directly opened Archive root", function()
+        local status_api
+        local back_buttons = 0
+        _G.__ZEN_UI_PLUGIN.config.status_bar = {
+            left_order = {}, center_order = {}, right_order = {},
+        }
+        ZenSpec.replace("common/paths", {
+            getHomeDir = function() return "/library" end,
+            normPath = function(path) return path end,
+            isHomeLocked = function() return false end,
+        })
+        ZenSpec.replace("common/shared_state", {
+            register = function(_plugin, api) status_api = api end,
+            registerLoader = function() end,
+        })
+        ZenSpec.replace("ui/widget/button", {
+            new = function()
+                back_buttons = back_buttons + 1
+                return { label_widget = {}, frame = {} }
+            end,
+        })
+
+        require("modules/filebrowser/patches/status_bar")()
+        assert.is_true(replace_upvalue(status_api.createStatusRow,
+            "_buildGroup", function() error("row build stopped") end))
+
+        local file_manager = {
+            file_chooser = {
+                item_table = {},
+                _zen_direct_archive_root = "/archive",
+            },
+        }
+        assert.is_false(pcall(status_api.createStatusRow, "/archive", file_manager))
+        assert.are.equal(0, back_buttons)
+
+        file_manager.file_chooser._zen_direct_archive_root = nil
+        assert.is_false(pcall(status_api.createStatusRow, "/archive", file_manager))
+        assert.are.equal(1, back_buttons)
+    end)
 end)

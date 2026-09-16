@@ -6327,6 +6327,9 @@ msgstr "A book with that name already exists in the destination."
 msgid "Archive"
 msgstr "Archive"
 
+msgid "Archive this book?"
+msgstr "Archive this book?"
+
 msgid "Archive folder not found: %1"
 msgstr "Archive folder not found: %1"
 
@@ -6348,11 +6351,11 @@ msgstr "Failed to move book."
 msgid "Mark as complete and archive"
 msgstr "Mark as complete and archive"
 
-msgid "Move to archive"
-msgstr "Move to archive"
+msgid "Remove from archive"
+msgstr "Remove from archive"
 
-msgid "Move to library"
-msgstr "Move to library"
+msgid "Remove this book from archive?"
+msgstr "Remove this book from archive?"
 
 msgid "No archive folder is set. Set one now?"
 msgstr "No archive folder is set. Set one now?"

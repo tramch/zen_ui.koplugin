@@ -40,6 +40,7 @@ describe("paths", function()
         Paths.getArchiveDir = function() return "/storage/emulated/0/Archive" end
 
         assert.is_true(Paths.isInThemedDir("/sdcard/Archive/Book.epub"))
+        assert.is_true(Paths.isArchiveRoot("/sdcard/Archive/"))
         assert.is_false(Paths.isInHomeDir("/sdcard/Archive/Book.epub"))
         assert.is_false(Paths.isHomeRoot("/sdcard/Archive"))
 

@@ -20,6 +20,7 @@ return {
     select       = "\u{F0489}",  -- mdi-cursor-default-click
     new_folder   = "\u{F0B9D}",  -- mdi-folder-plus
     folder_open  = "\u{F07C}",   -- mdi-folder-open
+    archive      = "\u{F19C}",
     connect      = "\u{F0337}",  -- mdi-link-variant
 
     -- view modes (context_menu.lua)

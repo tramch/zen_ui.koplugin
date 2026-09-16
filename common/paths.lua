@@ -101,6 +101,12 @@ function M.isPrimaryHomeRoot(path)
     return home ~= nil and norm == home
 end
 
+function M.isArchiveRoot(path)
+    if not path then return false end
+    local archive = M.getArchiveDir()
+    return archive ~= nil and M.normPath(path:gsub("/*$", "")) == archive
+end
+
 -- Returns true if path is at or directly under home_dir,
 -- or under any additional home dirs configured in zen_ui_config.
 -- Both path and home_dir are normalized before the comparison.

@@ -208,6 +208,7 @@ describe("file browser navbar navigation", function()
         ZenSpec.replace("common/paths", {
             getHomeDir = function() return "/library" end,
             getArchiveDir = function() return "/archive" end,
+            isArchiveRoot = function(path) return path:gsub("/+$", "") == "/archive" end,
             isInHomeDir = function(path) return path:sub(1, 8) == "/library" end,
         })
         ZenSpec.replace("common/plugin_root", "/plugin")
@@ -1230,6 +1231,17 @@ describe("file browser navbar navigation", function()
 
         FileManager.onPathChanged(fm, "/library/Fictional")
         assert.are.equal("Library", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+    end)
+
+    it("routes archive folder shortcuts through the Archive tab", function()
+        make_instance()
+        calls = {}
+
+        assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_FOLDER("/archive"))
+
+        assert.are.same({ "books:/archive" }, calls)
+        assert.are.equal("Archive", _G.__ZEN_UI_ACTIVE_TAB_LABEL)
+        assert.are.equal("/archive", FileManager.instance.file_chooser._zen_direct_archive_root)
     end)
 
     it("keeps Library active when Folder contains the library root", function()

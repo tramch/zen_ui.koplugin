@@ -589,10 +589,14 @@ local function apply_status_bar()
             and folder_root ~= nil and folder_root ~= ""
             and norm_path == folder_root
             and not in_series_view
+        local current_chooser = file_manager and file_manager.file_chooser
+        local at_direct_archive_root = current_chooser
+            and norm_path == current_chooser._zen_direct_archive_root
+            and not in_series_view
 
-        -- Show back in subfolders, but treat the configured Folder tab path as its root.
+        -- Direct folder tabs are roots; normal File Browser traversal can navigate upward.
         -- path must be non-nil — callers like collections pass nil for non-filesystem views.
-        local show_back = path ~= nil and not at_folder_tab_root
+        local show_back = path ~= nil and not at_folder_tab_root and not at_direct_archive_root
             and (in_subfolder or not home_locked)
 
         -- Back chevron is always pinned to the far-left when navigation is available

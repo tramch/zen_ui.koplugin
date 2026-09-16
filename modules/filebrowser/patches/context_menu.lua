@@ -1,7 +1,7 @@
 local function apply_context_menu()
     --[[
         Replaces the long-hold file/folder context menu with a minimal layout.
-        Always active; delegates to stock KOReader outside home_dir.
+        Always active; delegates to stock KOReader outside themed directories.
     ]]
 
     local BD           = require("ui/bidi")
@@ -35,6 +35,13 @@ local function apply_context_menu()
     local Geom            = require("ui/geometry")
     local Blitbuffer      = require("ffi/blitbuffer")
     local library_font    = require("modules/filebrowser/patches/library_font")
+
+    local function archive_context_row(fm, file, is_file)
+        local config = zen_plugin and zen_plugin.config
+        local context_menu = type(config) == "table" and config.context_menu
+        if type(context_menu) ~= "table" or context_menu.show_archive ~= true then return end
+        return archive_actions.contextRow(fm, file, is_file)
+    end
 
     local function apply_button_group_font(button_rows, nominal_size)
         if type(button_rows) ~= "table" then return button_rows end
@@ -815,7 +822,7 @@ local function apply_context_menu()
                     }})
                 end
 
-                local archive_row = archive_actions.contextRow(
+                local archive_row = archive_context_row(
                     FileManager.instance, item.path, item.is_file)
                 if archive_row then table.insert(buttons, archive_row) end
 
@@ -2471,7 +2478,7 @@ local function apply_context_menu()
                 })
             end
 
-            local archive_row = archive_actions.contextRow(
+            local archive_row = archive_context_row(
                 FileManager.instance, file, is_file)
             if archive_row then table.insert(buttons, archive_row) end
 
