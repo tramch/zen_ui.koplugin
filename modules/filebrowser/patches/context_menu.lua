@@ -939,7 +939,7 @@ local function apply_context_menu()
                 end)
             end
 
-            local dialog_title, dialog_cover_widget, book_props
+            local dialog_title, dialog_cover_widget, book_props, kindle_series_str
 
             local function showCoverFullscreen(cover_path)
                 local ok2, bim2 = pcall(require, "bookinfomanager")
@@ -1045,6 +1045,15 @@ local function apply_context_menu()
                         table.insert(vstack, TextWidget:new{
                             text = authors_str,
                             face = library_font.getFace(fs_authors),
+                            max_width = text_col_w,
+                        })
+                    end
+                    if is_kindle_book then
+                        table.insert(vstack, VerticalSpan:new{ width = Screen:scaleBySize(2) })
+                        table.insert(vstack, TextWidget:new{
+                            text = _("Kindle Library"),
+                            face = library_font.getFace(fs_tags),
+                            fgcolor = Blitbuffer.COLOR_GRAY_3,
                             max_width = text_col_w,
                         })
                     end
@@ -1194,7 +1203,11 @@ local function apply_context_menu()
                     if title_str then
                         text_str = title_str
                         if authors_str then text_str = text_str .. "\n" .. authors_str end
-                        if series_str_local then text_str = text_str .. "\n" .. series_str_local end
+                        if is_kindle_book then
+                            kindle_series_str = series_str_local
+                        elseif series_str_local then
+                            text_str = text_str .. "\n" .. series_str_local
+                        end
                     end
                     dialog_title = text_str or BD.filename(file:match("([^/]+)$"))
                 else
@@ -1458,6 +1471,24 @@ local function apply_context_menu()
                         table.insert(vstack, TextWidget2:new{
                             text = sub_line,
                             face = library_font.getFace(17),
+                            max_width = text_col_w,
+                        })
+                    end
+                    if is_kindle_book then
+                        table.insert(vstack, VerticalSpan2:new{ width = Screen:scaleBySize(2) })
+                        table.insert(vstack, TextWidget2:new{
+                            text = _("Kindle Library"),
+                            face = library_font.getFace(14),
+                            fgcolor = Blitbuffer2.COLOR_GRAY_3,
+                            max_width = text_col_w,
+                        })
+                    end
+                    if kindle_series_str then
+                        table.insert(vstack, VerticalSpan2:new{ width = Screen:scaleBySize(2) })
+                        table.insert(vstack, TextWidget2:new{
+                            text = kindle_series_str,
+                            face = library_font.getFace(17),
+                            fgcolor = Blitbuffer2.COLOR_GRAY_3,
                             max_width = text_col_w,
                         })
                     end

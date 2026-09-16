@@ -5,6 +5,7 @@ describe("archive actions", function()
     local shown
     local archive_path
     local source_in_archive
+    local kindle_book
 
     before_each(function()
         ZenSpec.unload("common/archive_actions")
@@ -17,6 +18,7 @@ describe("archive actions", function()
         shown = {}
         archive_path = "/archive"
         source_in_archive = false
+        kindle_book = false
         _G.G_reader_settings = {
             readSetting = function(_, key)
                 if key == "home_dir" then return "/library/" end
@@ -87,6 +89,9 @@ describe("archive actions", function()
             getHomeDir = function() return "/library" end,
             normPath = function(path) return path:gsub("//+", "/"):gsub("/$", "") end,
         })
+        ZenSpec.replace("modules/filebrowser/patches/kindle_virtual_library", {
+            isBookPath = function() return kindle_book end,
+        })
         ZenSpec.replace("util", {
             splitFilePathName = function(path)
                 return path:match("^(.-)([^/]+)$")
@@ -132,6 +137,15 @@ describe("archive actions", function()
             "/library/",
             saved.library_archive_original_dirs["/archive/book.epub"])
         assert.is_true(_G.__ZEN_UI_ARCHIVE_LISTING_DIRTY)
+    end)
+
+    it("hides archive actions for Kindle Library books", function()
+        kindle_book = true
+        local ArchiveActions = require("common/archive_actions")
+        local fm = { file_chooser = {}, onRefresh = function() end }
+
+        assert.is_nil(ArchiveActions.contextRow(fm, "/library/book.epub", true))
+        assert.is_false(ArchiveActions.canArchive("/library/book.epub"))
     end)
 
     it("saves a newly chosen archive and requests a live settings refresh", function()

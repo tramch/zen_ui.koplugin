@@ -157,6 +157,15 @@ describe("folder cover context-menu integration", function()
         end
     end
 
+    local function has_widget_text(widget, text)
+        if type(widget) ~= "table" then return false end
+        if widget.text == text then return true end
+        for _i, child in ipairs(widget) do
+            if has_widget_text(child, text) then return true end
+        end
+        return false
+    end
+
     before_each(function()
         saved_modules = {}
         original_plugin = rawget(_G, "__ZEN_UI_PLUGIN")
@@ -839,6 +848,7 @@ describe("folder cover context-menu integration", function()
             _zen_extra_buttons = { {{ text = "Clear cache" }} },
         })
         local kindle_dialog = shown[#shown]
+        assert.is_true(has_widget_text(kindle_dialog._added_widgets[1], "Kindle Library"))
         assert.is_truthy(find_button(kindle_dialog, "Details"))
         assert.is_truthy(find_button(kindle_dialog, "Read status"))
         assert.is_truthy(find_button(kindle_dialog, "Clear cache"))
