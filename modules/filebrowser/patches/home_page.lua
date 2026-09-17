@@ -2322,6 +2322,16 @@ end
 local function compute_row_heights(rows, body_h, row_gap, capacity, width, modules, config, data)
     local specs = {}
     local row_count = #rows
+    local goal_periods = config and config.goals and config.goals.periods
+    if type(goal_periods) == "table" and #goal_periods >= 3 then
+        local layout_rows = {}
+        for i, comp in ipairs(rows) do
+            layout_rows[i] = comp.id == "reading_goals"
+                and setmetatable({ size = { units = 1 + 0.1 * (#goal_periods - 1) } },
+                    { __index = comp }) or comp
+        end
+        rows = layout_rows
+    end
     local unit_counts = Registry.layoutUnits and Registry.layoutUnits(rows, capacity) or {}
     if #unit_counts == 0 then
         for _i, comp in ipairs(rows) do
@@ -3109,12 +3119,9 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                 final_widget,
             })
             if content_bounds then
+                content_bounds.row_index = i
                 content_bounds.row_y = row_y
-                if i == 1 then
-                    content_bounds.min_shift = 0
-                    content_bounds.max_shift = 0
-                elseif content_bounds.lock_shift ~= true then
-                    -- Reposition content without changing its grid-sized row.
+                if content_bounds.lock_shift ~= true then
                     content_bounds.min_shift = (content_bounds.min_shift or 0) - row_y
                     content_bounds.max_shift = (content_bounds.max_shift or 0)
                         + math.max(0, body_h - row_y - h)
@@ -3143,11 +3150,23 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
     local run = {}
     local function apply_visual_run(anchor_bottom)
         if #run > 1 then
-            local bottom_anchor_offset = anchor_bottom
-                and math.max(0, tonumber(run[#run].bottom_anchor_offset) or 0) or 0
-            local spacing_options = anchor_bottom and {
-                bottom = body_h - top_visual_inset - bottom_anchor_offset,
-            } or nil
+            local full_page = anchor_bottom
+                and run[1].row_index == 1
+                and run[#run].row_index == #rows
+            local spacing_options
+            if full_page then
+                local edge_pad = math.max(page_pad, row_gap * 2)
+                spacing_options = {
+                    top = edge_pad,
+                    bottom = body_h - edge_pad,
+                }
+            elseif anchor_bottom then
+                local bottom_anchor_offset = math.max(
+                    0, tonumber(run[#run].bottom_anchor_offset) or 0)
+                spacing_options = {
+                    bottom = body_h - top_visual_inset - bottom_anchor_offset,
+                }
+            end
             local shifts = Registry.equalSpacingShifts(run, spacing_options)
             for i, shift in ipairs(shifts) do
                 run[i].set_shift(shift)
@@ -3157,6 +3176,10 @@ local function build_home_content(menu, zen_config, dcfg, rows, data_provider)
                     menu._zen_home_visual_gaps[#menu._zen_home_visual_gaps + 1] =
                         run[i + 1].row_y + run[i + 1].top + shifts[i + 1]
                         - run[i].row_y - run[i].bottom - shifts[i]
+                end
+                if full_page then
+                    menu._zen_home_top_visual_inset = run[1].row_y + run[1].top
+                        + shifts[1]
                 end
                 if anchor_bottom then
                     local last = run[#run]

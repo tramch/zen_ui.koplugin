@@ -25,6 +25,10 @@ describe("home basic widgets", function()
                         and (select(2, values.text:gsub("\n", "")) + 1) * 12 or 12),
                 }
                 values.getSize = values.getSize or function(self) return self.dimen end
+                if kind == "ui/widget/textboxwidget" then
+                    values.getBaseline = values.getBaseline or function() return 9 end
+                    values.getLineHeight = values.getLineHeight or function() return 12 end
+                end
                 values.paintTo = values.paintTo or function(self, _bb, x, y)
                     self.painted = (self.painted or 0) + 1
                     self.paint_x, self.paint_y = x, y
@@ -54,6 +58,11 @@ describe("home basic widgets", function()
         })
         ZenSpec.replace("ui/font", {
             getFace = function(_, name, size) return { name = name, size = size } end,
+        })
+        ZenSpec.replace("ui/rendertext", {
+            sizeUtf8Text = function()
+                return { y_top = 8, y_bottom = 2 }
+            end,
         })
         ZenSpec.replace("ui/geometry", { new = geom_new })
         for _i, name in ipairs({
@@ -259,7 +268,7 @@ describe("home basic widgets", function()
             end
         end
         assert.are.same({ 19, 19 }, divider_heights)
-        assert.are.same({ 48, 71, -48, 49 }, {
+        assert.are.same({ 52, 71, -52, 49 }, {
             content_bounds.top,
             content_bounds.bottom,
             content_bounds.min_shift,
@@ -290,7 +299,7 @@ describe("home basic widgets", function()
             streak = 999,
         }
         component.build(ctx)
-        assert.are.same({ 48, 71, -48, 49 }, {
+        assert.are.same({ 52, 71, -52, 49 }, {
             content_bounds.top,
             content_bounds.bottom,
             content_bounds.min_shift,
@@ -452,7 +461,7 @@ describe("home basic widgets", function()
         end
         assert.are.equal(48, quote_widget.paint_y)
         assert.are.equal(60, author_widget.paint_y)
-        assert.are.same({ 0, 120, 0, 0, true }, {
+        assert.are.same({ 49, 71, -49, 49, nil }, {
             content_bounds.top,
             content_bounds.bottom,
             content_bounds.min_shift,
@@ -461,11 +470,11 @@ describe("home basic widgets", function()
         })
         content_bounds.set_shift(-7)
         widget[1][1]:paintTo(nil, 0, 0)
-        assert.are.equal(48, quote_widget.paint_y)
-        assert.are.equal(60, author_widget.paint_y)
+        assert.are.equal(41, quote_widget.paint_y)
+        assert.are.equal(53, author_widget.paint_y)
     end)
 
-    it("reports fixed quote bounds regardless of content length", function()
+    it("reports the visible quote bounds", function()
         ZenSpec.unload("modules/filebrowser/patches/home/widgets/quotes")
         local component = require("modules/filebrowser/patches/home/widgets/quotes")
         local function bounds_for(text)
@@ -489,8 +498,8 @@ describe("home basic widgets", function()
             }
         end
 
-        assert.are.same({ 0, 120, 0, 0 }, bounds_for("Short."))
-        assert.are.same({ 0, 120, 0, 0 }, bounds_for("First\nSecond\nThird"))
+        assert.are.same({ 49, 71, -49, 49 }, bounds_for("Short."))
+        assert.are.same({ 37, 83, -37, 37 }, bounds_for("First\nSecond\nThird"))
     end)
 
     it("gives the bottom quote row a content-independent fixed height", function()
@@ -571,6 +580,8 @@ describe("home basic widgets", function()
                     h = values.height or natural_h,
                 }
                 values.getSize = function(self) return self.dimen end
+                values.getBaseline = function() return math.floor(values.face.size * 0.8) end
+                values.getLineHeight = function() return line_height_px end
                 values.paintTo = function() end
                 values.free = function() end
                 created[#created + 1] = values
@@ -725,7 +736,7 @@ describe("home basic widgets", function()
             if child.text == '"First\nSecond\nThird\nFourth"' and child.height then
                 assert.are.equal(36, child.height)
                 assert.are.equal(42, child.paint_y)
-                assert.are.same({ 0, 120 }, {
+                assert.are.same({ 43, 77 }, {
                     content_bounds.top,
                     content_bounds.bottom,
                 })

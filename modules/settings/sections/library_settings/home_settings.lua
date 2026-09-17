@@ -19,7 +19,9 @@ local PluginScan = require("modules/menu/app_launcher/plugin_scan")
 local Kindle = require("modules/filebrowser/patches/kindle_virtual_library")
 
 local M = {}
+local MIN_GOALS_FONT_SIZE = 10
 local DEFAULT_GOALS_FONT_SIZE = 11
+local MAX_GOALS_FONT_SIZE = 16
 local DEFAULT_DATETIME_MAX_FONT_SIZE = 36
 local MAX_DATETIME_FONT_SIZE = 160
 local DEFAULT_STATS_FONT_SIZE = 16
@@ -234,11 +236,14 @@ local function ensure_home_widget_cfg(dcfg)
     stats_triplet.font_scale = nil
     local reading_goals = ensure_module_cfg(dcfg, "reading_goals")
     local goals_font_size = tonumber(reading_goals.font_size)
-    reading_goals.font_size = goals_font_size and math.max(8, math.min(32, math.floor(goals_font_size + 0.5))) or nil
+    reading_goals.font_size = goals_font_size
+        and math.max(MIN_GOALS_FONT_SIZE,
+            math.min(MAX_GOALS_FONT_SIZE, math.floor(goals_font_size + 0.5))) or nil
     reading_goals.automatic_font_size = reading_goals.automatic_font_size ~= false
-    reading_goals.max_font_size = math.max(8, math.min(64, math.floor(
-        (tonumber(reading_goals.max_font_size) or 32) + 0.5
-    )))
+    reading_goals.max_font_size = math.max(MIN_GOALS_FONT_SIZE,
+        math.min(MAX_GOALS_FONT_SIZE, math.floor(
+            (tonumber(reading_goals.max_font_size) or MAX_GOALS_FONT_SIZE) + 0.5
+        )))
     ensure_module_cfg(dcfg, "quotes")
     ensure_strip_cfg(dcfg)
 end
@@ -2198,8 +2203,8 @@ function M.build(ctx)
                 UIManager:show(SpinWidget:new{
                     title_text = _("Reading goals font size"),
                     value = goals_cfg.font_size or DEFAULT_GOALS_FONT_SIZE,
-                    value_min = 8,
-                    value_max = 32,
+                    value_min = MIN_GOALS_FONT_SIZE,
+                    value_max = MAX_GOALS_FONT_SIZE,
                     default_value = DEFAULT_GOALS_FONT_SIZE,
                     callback = function(spin)
                         goals_cfg.font_size = spin.value

@@ -198,7 +198,7 @@ def _wait_for_home(
     raise AssertionError(f"Home widgets did not become ready: {latest}")
 
 
-def test_two_row_strip_offsets_its_bottom_anchor_by_the_home_row_gap() -> None:
+def test_two_row_strip_matches_top_and_bottom_spacing() -> None:
     runtime = Path(os.environ["KOREADER_DIR"])
     with tempfile.TemporaryDirectory(prefix="zen-ui-home-two-row-strip-") as temporary:
         root = Path(temporary)
@@ -235,11 +235,14 @@ def test_two_row_strip_offsets_its_bottom_anchor_by_the_home_row_gap() -> None:
                 minimum_widget_count=2,
                 required_state_keys={"bottom_visual_inset"},
             )
-            bottom_inset = int(home["bottom_visual_inset"])
-            expected_bottom_inset = (
-                int(home["top_visual_inset"]) + int(home["row_gap"])
-            )
-            assert abs(bottom_inset - expected_bottom_inset) <= 2, home
+            assert abs(
+                int(home["bottom_visual_inset"])
+                - int(home["top_visual_inset"])
+            ) <= 2, home
+            assert int(home["top_visual_inset"]) == max(
+                int(home["page_padding"]), int(home["row_gap"]) * 2
+            ), home
+            assert int(home["visual_gaps"][0]) > int(home["top_visual_inset"]), home
         finally:
             process.send_signal(signal.SIGTERM)
             process.wait(timeout=15)
@@ -411,7 +414,7 @@ def test_three_widget_home_evenly_spaces_rows_to_the_bottom(
             assert max(visual_gaps) - min(visual_gaps) <= 1, home
             if last_widget == "quotes":
                 assert int(home["bottom_visual_inset"]) \
-                    == int(home["page_padding"]), home
+                    == max(int(home["page_padding"]), int(home["row_gap"]) * 2), home
             else:
                 assert abs(
                     int(home["bottom_visual_inset"])
@@ -475,7 +478,7 @@ def test_home_renders_all_core_widgets_with_and_without_history(with_history: bo
             process.wait(timeout=15)
 
 
-def test_diagnose_colorsoft_home_spacing() -> None:
+def test_colorsoft_home_uses_equal_inner_gaps_and_smaller_edge_spacing() -> None:
     runtime = Path(os.environ["KOREADER_DIR"])
     with tempfile.TemporaryDirectory(prefix="zen-ui-home-spacing-") as temporary:
         root = Path(temporary)
@@ -483,6 +486,11 @@ def test_diagnose_colorsoft_home_spacing() -> None:
         ko_home.mkdir()
         library = root / "library"
         fixture = build_library(library)
+        books = [fixture["epub"]]
+        for index in range(2, 6):
+            book = library / f"Home Strip {index}.epub"
+            book.write_bytes(fixture["epub"].read_bytes())
+            books.append(book)
         _seed_home_settings(ko_home)
         settings_path = ko_home / "settings" / "ZenOS" / "home.lua"
         settings_source = settings_path.read_text(encoding="utf-8").replace(
@@ -495,8 +503,8 @@ def test_diagnose_colorsoft_home_spacing() -> None:
             "        reading_goals = true, stats_triplet = true,",
         )
         settings_path.write_text(settings_source, encoding="utf-8")
-        _seed_bookinfo(ko_home, fixture["epub"], "A deterministic featured-book description. " * 8)
-        _seed_history(ko_home, fixture["epub"])
+        _seed_bookinfo(ko_home, fixture["epub"])
+        _seed_history_books(ko_home, books)
         socket_path = root / "driver.sock"
         process = launch(
             runtime,
@@ -509,9 +517,102 @@ def test_diagnose_colorsoft_home_spacing() -> None:
             wait_for_socket(socket_path)
             driver = ZenDriver(socket_path)
             assert driver.command("activate_navbar_tab", id="home")["ok"] is True
-            home = _wait_for_home(driver, minimum_widget_count=4)
-            driver.screenshot(Path("/private/tmp/colorsoft-emulator.png"))
-            raise AssertionError(home)
+            home = _wait_for_home(
+                driver,
+                required_book_paths={str(book.resolve()) for book in books[1:]},
+                minimum_widget_count=4,
+                required_state_keys={"bottom_visual_inset"},
+            )
+
+            assert home["widget_ids"] == [
+                "featured", "stats_triplet", "reading_goals", "strip",
+            ]
+            assert home["widget_heights"] == {
+                "featured": 590,
+                "stats_triplet": 135,
+                "reading_goals": 135,
+                "strip": 590,
+            }
+            edge_spaces = [
+                int(home["top_visual_inset"]),
+                int(home["bottom_visual_inset"]),
+            ]
+            inner_spaces = [int(gap) for gap in home["visual_gaps"]]
+            assert max(edge_spaces) - min(edge_spaces) <= 2, home
+            assert edge_spaces[0] == max(
+                int(home["page_padding"]), int(home["row_gap"]) * 2
+            ), home
+            assert max(inner_spaces) - min(inner_spaces) <= 2, home
+            assert max(edge_spaces) < min(inner_spaces), home
+        finally:
+            process.send_signal(signal.SIGTERM)
+            process.wait(timeout=15)
+
+
+def test_compact_home_with_three_goals_never_overlaps() -> None:
+    runtime = Path(os.environ["KOREADER_DIR"])
+    with tempfile.TemporaryDirectory(prefix="zen-ui-home-default-spacing-") as temporary:
+        root = Path(temporary)
+        ko_home = root / "home"
+        ko_home.mkdir()
+        library = root / "library"
+        fixture = build_library(library)
+        books = [fixture["epub"]]
+        for index in range(2, 6):
+            book = library / f"Home Strip {index}.epub"
+            book.write_bytes(fixture["epub"].read_bytes())
+            books.append(book)
+        _seed_home_settings(ko_home)
+        settings_path = ko_home / "settings" / "ZenOS" / "home.lua"
+        settings_source = settings_path.read_text(encoding="utf-8").replace(
+            'order = { "featured", "strip", "quotes", "reading_goals", "stats_triplet" },',
+            'order = { "featured", "stats_triplet", "reading_goals", "strip" },',
+        ).replace(
+            "featured = true, strip = true, quotes = true,\n"
+            "        reading_goals = true, stats_triplet = true,",
+            "featured = true, strip = true, quotes = false,\n"
+            "        reading_goals = true, stats_triplet = true,",
+        ).replace(
+            "show_status_bar = false,\n        progress_meta",
+            "show_status_bar = true,\n        progress_meta",
+        ).replace(
+            "show_status_bar = false,\n    rows = {",
+            'show_status_bar = false,\n    goals = { periods = { "daily", "weekly", "monthly" } },\n    rows = {',
+        )
+        settings_path.write_text(settings_source, encoding="utf-8")
+        _seed_bookinfo(ko_home, fixture["epub"])
+        _seed_history_books(ko_home, books)
+        socket_path = root / "driver.sock"
+        process = launch(
+            runtime,
+            ko_home,
+            socket_path,
+            library.resolve(),
+            env_overrides={"EMULATE_READER_W": "536", "EMULATE_READER_H": "718"},
+        )
+        try:
+            wait_for_socket(socket_path)
+            driver = ZenDriver(socket_path)
+            assert driver.command("activate_navbar_tab", id="home")["ok"] is True
+            home = _wait_for_home(
+                driver,
+                required_book_paths={str(book.resolve()) for book in books[1:]},
+                minimum_widget_count=4,
+                required_state_keys={"bottom_visual_inset"},
+            )
+            assert home["widget_ids"] == [
+                "featured", "stats_triplet", "reading_goals", "strip",
+            ]
+            assert 125 <= int(home["widget_heights"]["reading_goals"]) <= 150, home
+            assert abs(
+                int(home["top_visual_inset"])
+                - int(home["bottom_visual_inset"])
+            ) <= 2, home
+            assert int(home["top_visual_inset"]) == max(
+                int(home["page_padding"]), int(home["row_gap"]) * 2
+            ), home
+            assert min(home["visual_gaps"]) >= 0, home
+            assert max(home["visual_gaps"]) - min(home["visual_gaps"]) <= 2, home
         finally:
             process.send_signal(signal.SIGTERM)
             process.wait(timeout=15)

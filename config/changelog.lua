@@ -353,7 +353,10 @@ return {
         "Add Kindle books to Home/Collections",
         "Fix even home widget spacing",
         "Hide empty folders when filtering Library",
+        "Adjust spacing between home widgets",
+        "Show finished badge on finished books with dimmed covers",
         "Option to exclude CBZ/CBR from Reading Goals",
-        "Option to exclude Rakuyomi comics from history/home"
+        "Option to exclude Rakuyomi comics from history/home",
+        "Open KOReader + menu outside home in context menu"
      }
 }
