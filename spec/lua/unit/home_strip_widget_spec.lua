@@ -324,6 +324,42 @@ describe("home strip widget", function()
         assert.are.same(expected, dimmed)
     end)
 
+    it("shows enabled status badges on dimmed finished covers", function()
+        rawset(_G, "__ZEN_UI_PLUGIN", {
+            config = {
+                browser_cover_badges = {
+                    dim_finished_books = true,
+                    show_mosaic_progress = true,
+                },
+            },
+        })
+        local Strip = require("modules/filebrowser/patches/home/widgets/strip")
+        Strip.build({
+            width = 600,
+            height = 300,
+            component_id = "strip",
+            module_cfg = { count = 3, interactive = false, show_badges = true },
+            data = {
+                getBooksForStrip = function()
+                    return {{ path = "/library/finished.epub", status = "complete" }}
+                end,
+            },
+        })
+
+        local badge_rects = 0
+        for _i, widget in ipairs(created) do
+            if widget.kind == "cover" then
+                widget:paintTo({
+                    lightenRect = function() end,
+                    paintRect = function() end,
+                    paintRectRGB32 = function() badge_rects = badge_rects + 1 end,
+                }, 0, 0)
+                break
+            end
+        end
+        assert.is_true(badge_rects > 0)
+    end)
+
     it("reduces the page size when the strip is too narrow for readable covers", function()
         local requested = {}
         local Strip = require("modules/filebrowser/patches/home/widgets/strip")

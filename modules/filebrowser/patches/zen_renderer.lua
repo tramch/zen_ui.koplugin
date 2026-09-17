@@ -695,12 +695,11 @@ local function apply_zen_renderer()
         local badge = config.browser_cover_badges or {}
         if badge.show_mosaic_progress ~= true or not item._zen_effective_status then return end
         local effective_status = item._zen_effective_status
-        local dim_finished = badge.dim_finished_books == true and effective_status == "complete"
         local is_new = effective_status == "new"
-        local do_check = effective_status == "complete" and not dim_finished
+        local do_check = effective_status == "complete"
         local do_tbr = effective_status == "tbr"
         local do_pause = effective_status == "abandoned"
-        local do_pct = not is_new and not dim_finished and not do_check and not do_tbr and not do_pause
+        local do_pct = not is_new and not do_check and not do_tbr and not do_pause
             and item.percent_finished ~= nil
         if not (do_check or do_tbr or do_pause or do_pct) then return end
 

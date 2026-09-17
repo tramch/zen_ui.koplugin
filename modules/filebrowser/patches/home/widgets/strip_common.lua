@@ -309,7 +309,7 @@ local function apply_strip_cover_decorations(frame, book, config, show_badges)
         local pct    = type(book.percent) == "number" and book.percent or 0
         local status = book.status
         local is_new = status == "new"
-        local do_check = status == "complete" and not dim_finished
+        local do_check = status == "complete"
         local do_tbr = (status == "tbr")
         local do_pause = (status == "abandoned")
         local do_pct   = not is_new and not do_check and not do_tbr and not do_pause and pct > 0

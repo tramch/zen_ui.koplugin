@@ -1077,7 +1077,10 @@ describe("Zen renderer", function()
 
     it("honors finished dimming and the new-banner setting", function()
         require("modules/filebrowser/patches/zen_renderer")()
-        _G.__ZEN_UI_PLUGIN.config.browser_cover_badges = { dim_finished_books = true }
+        _G.__ZEN_UI_PLUGIN.config.browser_cover_badges = {
+            dim_finished_books = true,
+            show_mosaic_progress = true,
+        }
         local item_class = MosaicMenu._zen_mosaic_item_class
         local item = setmetatable({
             _zen_cover_frame = { dimen = { x = 0, y = 0, w = 100, h = 150 }, bordersize = 1 },
@@ -1087,14 +1090,16 @@ describe("Zen renderer", function()
             height = 400,
         }, { __index = item_class })
         local dimmed = 0
+        local badge_rects = 0
         local bb = {
-            paintRectRGB32 = function() end,
+            paintRectRGB32 = function() badge_rects = badge_rects + 1 end,
             paintRect = function() end,
             lightenRect = function() dimmed = dimmed + 1 end,
         }
 
         item:paintTo(bb, 0, 0)
         assert.are.equal(1, dimmed)
+        assert.is_true(badge_rects > 0)
         assert.are.equal(6, item._zen_cover_frame._zen_cover_border_color)
 
         _G.__ZEN_UI_PLUGIN.config.browser_cover_badges = { show_new_banner = true }
