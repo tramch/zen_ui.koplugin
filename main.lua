@@ -968,6 +968,7 @@ end
 function ZenUI:onSuspend()
     if self._zenos_brand_inert then return end
     zen_updater.cancel_wakeup_check()
+    require("common/bluetooth").onSuspend()
     local ok_incognito, Incognito = pcall(require, "modules/global/patches/incognito_mode")
     if ok_incognito and type(Incognito.onSuspend) == "function" then
         Incognito.onSuspend()

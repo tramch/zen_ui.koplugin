@@ -351,6 +351,7 @@ return {
         "Add plugin actions to Context Menu in the More section (Library > Context menu)",
         "Add Archive functionality from default move to Archive plugin",
         "Add Kindle books to Home/Collections",
+        "Add Kobo bluetooth control",
         "Fix even home widget spacing",
         "Hide empty folders when filtering Library",
         "Adjust spacing between home widgets",

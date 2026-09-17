@@ -19,11 +19,13 @@ describe("reader top status bar refresh", function()
     local startup_reader
     local disabled_reader
     local NetworkMgr
+    local bluetooth_enabled
 
     local dependencies = {
         "apps/reader/modules/readerview",
         "apps/reader/modules/readertypeset",
         "apps/reader/readerui",
+        "common/bluetooth",
         "common/inline_icon_map",
         "common/ui/color_text_widget",
         "common/reader_status_bar",
@@ -158,7 +160,9 @@ describe("reader top status bar refresh", function()
         replace("apps/reader/modules/readerview", ReaderView)
         replace("apps/reader/modules/readertypeset", ReaderTypeset)
         replace("apps/reader/readerui", ReaderUI)
-        replace("common/inline_icon_map", {})
+        bluetooth_enabled = false
+        replace("common/bluetooth", { getState = function() return bluetooth_enabled end })
+        replace("common/inline_icon_map", { bluetooth_on = "BT" })
         replace("common/reader_themes", {
             getBackgroundColor = function() end,
             getTextColor = function() end,
@@ -469,6 +473,14 @@ describe("reader top status bar refresh", function()
 
         NetworkMgr.wifi_on = true
         assert.are.equal("\u{ECA8}", item_fetchers.wifi())
+    end)
+
+    it("shows Bluetooth only while powered and refreshes its slot on state changes", function()
+        assert.is_nil(item_fetchers.bluetooth())
+        bluetooth_enabled = true
+        assert.are.equal("BT", item_fetchers.bluetooth())
+        assert.are.equal("BT", collect_item_texts({ "bluetooth" })[1].text)
+        assert.is_function(ReaderUI.onBluetoothStateChanged)
     end)
 
     it("uses the bottom status bar's progress percentage format", function()

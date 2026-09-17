@@ -1,4 +1,5 @@
 local Device = require("device")
+local Kobo = require("common/kobo_bluetooth")
 local logger = require("common/zen_logger").new("bluetooth")
 
 local M = {}
@@ -30,7 +31,10 @@ local function read_state_from_command()
 end
 
 local function read_state()
-    if not is_kindle() then return nil end
+    if not is_kindle() then
+        local state = Kobo.getState()
+        return state == nil and nil or (state and 1 or 0)
+    end
 
     local value = with_lipc(function(handle)
         local ok, state = pcall(handle.get_int_property, handle, SERVICE, "BTstate")
@@ -55,14 +59,15 @@ function M.getState()
 end
 
 function M.isAvailable()
-    return M.getState() ~= nil
+    return Kobo.isAvailable() or M.getState() ~= nil
 end
 
 function M.isEnabled()
     return M.getState() == true
 end
 
-function M.setEnabled(enabled)
+function M.setEnabled(enabled, complete)
+    if not is_kindle() then return Kobo.setEnabled(enabled, complete) end
     local state = log_state("before request")
     if state == nil then
         logger.warn("toggle unavailable: could not read BTstate")
@@ -90,14 +95,18 @@ function M.setEnabled(enabled)
     return success
 end
 
-function M.toggle()
+function M.toggle(complete)
     local state = read_state()
     if state == nil then return false end
-    return M.setEnabled(state == 0)
+    return M.setEnabled(state == 0, complete)
 end
 
 function M.logState(context)
     return log_state(context or "check")
+end
+
+function M.onSuspend()
+    Kobo.onSuspend()
 end
 
 return M

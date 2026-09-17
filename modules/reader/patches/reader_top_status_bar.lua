@@ -2,7 +2,7 @@ local function apply_reader_top_status_bar()
     --[[
         Paints a configurable three-zone header at the top of the reader screen.
         Left / center / right slots each hold an ordered list of item keys.
-        Items: time, battery, battery_icon, battery_percent, wifi, frontlight, ram,
+        Items: time, battery, battery_icon, battery_percent, wifi, bluetooth, frontlight, ram,
                disk, incognito, custom_text, book_title, author, chapter,
                progress_percent, current_page, total_pages, page_progress
         Wraps ReaderView.paintTo. Config via config.reader_top_status_bar.
@@ -32,6 +32,7 @@ local function apply_reader_top_status_bar()
     local inline_icons = require("common/inline_icon_map")
     local _ = require("gettext")
     local ReaderThemes = require("common/reader_themes")
+    local Bluetooth = require("common/bluetooth")
     local Screen = Device.screen
     local CreDocument = require("document/credocument")
     local ReaderTypeset = require("apps/reader/modules/readertypeset")
@@ -83,7 +84,7 @@ local function apply_reader_top_status_bar()
     local _resume_refresh_timer_1
     local _resume_refresh_timer_2
     local RESUME_REFRESH_ITEMS = {
-        "time", "wifi", "battery", "battery_icon", "battery_percent",
+        "time", "wifi", "bluetooth", "battery", "battery_icon", "battery_percent",
         "frontlight", "ram", "disk", "incognito",
     }
     local MINUTE_REFRESH_ITEMS = { "time", "battery", "battery_icon", "battery_percent" }
@@ -133,6 +134,12 @@ local function apply_reader_top_status_bar()
         local cfg = zen_plugin and zen_plugin.config and zen_plugin.config.reader_top_status_bar
         if type(cfg) == "table" and cfg.wifi_hide_when_off == true then return nil end
         return "\u{ECA9}", nil, colors.wifi_off
+    end
+
+    local function getBluetoothItem()
+        if Bluetooth.getState() then
+            return inline_icons.bluetooth_on, nil, colors.wifi_on
+        end
     end
 
     local function getRamItem()
@@ -376,6 +383,7 @@ local function apply_reader_top_status_bar()
 
     local item_fetchers = {
         wifi        = getWifiItem,
+        bluetooth   = getBluetoothItem,
         incognito   = getIncognitoItem,
         disk        = getDiskItem,
         ram         = getRamItem,
@@ -1060,6 +1068,12 @@ local function apply_reader_top_status_bar()
         ReaderUI.onNetworkDisconnected = function(rui, ...)
             if orig_onNetworkDisconnected then orig_onNetworkDisconnected(rui, ...) end
             repaintActiveHeaderSlots({ "wifi" }, rui)
+        end
+
+        local orig_onBluetoothStateChanged = ReaderUI.onBluetoothStateChanged
+        ReaderUI.onBluetoothStateChanged = function(rui, ...)
+            if orig_onBluetoothStateChanged then orig_onBluetoothStateChanged(rui, ...) end
+            repaintActiveHeaderSlots({ "bluetooth" }, rui)
         end
 
         local orig_onClose = ReaderUI.onClose

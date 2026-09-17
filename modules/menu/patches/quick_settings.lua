@@ -525,9 +525,14 @@ local function apply_quick_settings()
             visible_func = Bluetooth.isAvailable,
             active_func = Bluetooth.isEnabled,
             callback = function(touch_menu)
-                if Bluetooth.toggle() then
+                if Bluetooth.toggle(function()
+                    if touch_menu.item_table and touch_menu.item_table.panel then
+                        touch_menu:updateItems(1)
+                    end
+                end) then
                     UIManager:scheduleIn(0.5, function()
                         Bluetooth.logState("0.5 s after control toggle")
+                        UIManager:broadcastEvent(Event:new("BluetoothStateChanged"))
                         if touch_menu.item_table and touch_menu.item_table.panel then
                             touch_menu:updateItems(1)
                         end

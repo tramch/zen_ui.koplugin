@@ -12,6 +12,7 @@ local PresetStore = require("config/preset_store")
 local ReaderThemes = require("common/reader_themes")
 local icons = require("common/inline_icon_map")
 local IconItem = require("common/ui/icon_menu_item")
+local Bluetooth = require("common/bluetooth")
 
 local M = {}
 
@@ -157,6 +158,7 @@ function M.build(ctx)
         { key = "battery_percent", text = _("Battery percentage") },
         { key = "incognito",   text = _("Incognito")     },
         { key = "wifi",        text = _("Wi-Fi")         },
+        { key = "bluetooth",   text = _("Bluetooth"), available = Bluetooth.isAvailable },
         { key = "frontlight",  text = _("Brightness")    },
         { key = "ram",         text = _("RAM usage")     },
         { key = "disk",        text = _("Disk space")    },
@@ -169,13 +171,20 @@ function M.build(ctx)
         { key = "total_pages",      text = _("Total pages") },
         { key = "page_progress",    text = _("Current / total pages") },
     }
+    do
+        local available = {}
+        for _i, item in ipairs(header_all_items) do
+            if not item.available or item.available() then table.insert(available, item) end
+        end
+        header_all_items = available
+    end
 
     local HEADER_CANONICAL = {
         left   = { "time", "custom_text" },
         center = { "time" },
         right  = {
             "progress_percent", "current_page", "total_pages", "page_progress",
-            "custom_text", "frontlight", "incognito", "wifi", "battery",
+            "custom_text", "frontlight", "incognito", "bluetooth", "wifi", "battery",
             "battery_icon", "battery_percent",
         },
     }
