@@ -1984,6 +1984,21 @@ describe("file browser navbar navigation", function()
         assert.are.same({}, calls)
     end)
 
+    it("opens the KOReader plus menu when holding the navbar outside home folders", function()
+        local fm = make_instance()
+        fm[1] = { fm.file_chooser }
+        fm.onShowPlusMenu = function() calls[#calls + 1] = "plus_menu" end
+        _G.__ZEN_UI_REINJECT_FM_NAVBAR()
+        local navbar = fm[1][1][2]
+        assert.is_table(navbar.ges_events.HoldNavBar)
+
+        fm.file_chooser.path = "/outside"
+        assert.is_true(navbar:onHoldNavBar(nil, { pos = { x = 400, y = 1 } }))
+        fm.file_chooser.path = "/library/subfolder"
+        assert.is_false(navbar:onHoldNavBar(nil, { pos = { x = 400, y = 1 } }))
+        assert.are.same({ "plus_menu" }, calls)
+    end)
+
     it("activates a focused file-manager navbar tab on Press", function()
         device_has_keys = true
         local fm = make_instance()

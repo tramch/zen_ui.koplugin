@@ -475,6 +475,48 @@ def test_home_renders_all_core_widgets_with_and_without_history(with_history: bo
             process.wait(timeout=15)
 
 
+def test_diagnose_colorsoft_home_spacing() -> None:
+    runtime = Path(os.environ["KOREADER_DIR"])
+    with tempfile.TemporaryDirectory(prefix="zen-ui-home-spacing-") as temporary:
+        root = Path(temporary)
+        ko_home = root / "home"
+        ko_home.mkdir()
+        library = root / "library"
+        fixture = build_library(library)
+        _seed_home_settings(ko_home)
+        settings_path = ko_home / "settings" / "ZenOS" / "home.lua"
+        settings_source = settings_path.read_text(encoding="utf-8").replace(
+            'order = { "featured", "strip", "quotes", "reading_goals", "stats_triplet" },',
+            'order = { "featured", "stats_triplet", "reading_goals", "strip" },',
+        ).replace(
+            "featured = true, strip = true, quotes = true,\n"
+            "        reading_goals = true, stats_triplet = true,",
+            "featured = true, strip = true, quotes = false,\n"
+            "        reading_goals = true, stats_triplet = true,",
+        )
+        settings_path.write_text(settings_source, encoding="utf-8")
+        _seed_bookinfo(ko_home, fixture["epub"], "A deterministic featured-book description. " * 8)
+        _seed_history(ko_home, fixture["epub"])
+        socket_path = root / "driver.sock"
+        process = launch(
+            runtime,
+            ko_home,
+            socket_path,
+            library.resolve(),
+            env_overrides={"EMULATE_READER_W": "632", "EMULATE_READER_H": "840"},
+        )
+        try:
+            wait_for_socket(socket_path)
+            driver = ZenDriver(socket_path)
+            assert driver.command("activate_navbar_tab", id="home")["ok"] is True
+            home = _wait_for_home(driver, minimum_widget_count=4)
+            driver.screenshot(Path("/private/tmp/colorsoft-emulator.png"))
+            raise AssertionError(home)
+        finally:
+            process.send_signal(signal.SIGTERM)
+            process.wait(timeout=15)
+
+
 def test_home_tags_drill_from_tag_folders_into_books() -> None:
     runtime = Path(os.environ["KOREADER_DIR"])
     with tempfile.TemporaryDirectory(prefix="zen-ui-home-tags-") as temporary:

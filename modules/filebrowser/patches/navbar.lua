@@ -2276,6 +2276,12 @@ local function apply_navbar()
                         range = Geom:new{ x = 0, y = 0, w = screen_w, h = Screen:getHeight() },
                     },
                 },
+                HoldNavBar = {
+                    GestureRange:new{
+                        ges = "hold",
+                        range = Geom:new{ x = 0, y = 0, w = screen_w, h = Screen:getHeight() },
+                    },
+                },
             },
         }
 
@@ -2307,6 +2313,18 @@ local function apply_navbar()
                 setActiveTab(tapped_id)
             end
             runTabCallback(tapped_id)
+            return true
+        end
+
+        navbar.onHoldNavBar = function(self, _, ges)
+            if not self:getTappedTabId(ges.pos) then return false end
+            local fm = FileManager.instance
+            local fc = fm and fm.file_chooser
+            if not (fc and fc.path) or paths.isInHomeDir(fc.path)
+                    or type(fm.onShowPlusMenu) ~= "function" then
+                return false
+            end
+            fm:onShowPlusMenu()
             return true
         end
 
