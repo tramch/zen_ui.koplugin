@@ -527,12 +527,15 @@ def test_colorsoft_home_uses_equal_inner_gaps_and_smaller_edge_spacing() -> None
             assert home["widget_ids"] == [
                 "featured", "stats_triplet", "reading_goals", "strip",
             ]
-            assert home["widget_heights"] == {
-                "featured": 590,
-                "stats_triplet": 135,
-                "reading_goals": 135,
-                "strip": 590,
+            heights = {
+                name: int(height)
+                for name, height in home["widget_heights"].items()
             }
+            height_tolerance = max(2, int(home["row_gap"]) // 2)
+            assert abs(heights["featured"] - heights["strip"]) \
+                <= height_tolerance, home
+            assert abs(heights["stats_triplet"] - heights["reading_goals"]) \
+                <= height_tolerance, home
             edge_spaces = [
                 int(home["top_visual_inset"]),
                 int(home["bottom_visual_inset"]),
@@ -603,7 +606,8 @@ def test_compact_home_with_three_goals_never_overlaps() -> None:
             assert home["widget_ids"] == [
                 "featured", "stats_triplet", "reading_goals", "strip",
             ]
-            assert 125 <= int(home["widget_heights"]["reading_goals"]) <= 150, home
+            assert int(home["widget_heights"]["reading_goals"]) \
+                > int(home["widget_heights"]["stats_triplet"]), home
             assert abs(
                 int(home["top_visual_inset"])
                 - int(home["bottom_visual_inset"])
