@@ -13,6 +13,7 @@ describe("file browser navbar navigation", function()
     local dir_mtimes
     local dir_scan_calls
     local home_show_callback
+    local home_refresh_type
     local setup_observation
     local initial_reinject_callback
     local device_input
@@ -59,6 +60,7 @@ describe("file browser navbar navigation", function()
         dir_mtimes = {}
         dir_scan_calls = 0
         home_show_callback = nil
+        home_refresh_type = nil
         setup_observation = nil
         initial_reinject_callback = nil
         native_available = true
@@ -74,8 +76,9 @@ describe("file browser navbar navigation", function()
         original_memory_policy = package.loaded["common/memory_policy"]
         shared = {
             home = {
-                showHomeView = function(inject)
+                showHomeView = function(inject, refresh_type)
                     calls[#calls + 1] = "home"
+                    home_refresh_type = refresh_type
                     if home_show_callback then home_show_callback(inject) end
                 end,
                 closeAll = function() calls[#calls + 1] = "close_home" end,
@@ -1813,7 +1816,7 @@ describe("file browser navbar navigation", function()
             reveal.details)
     end)
 
-    it("uses flashui between Library and Home", function()
+    it("uses one flashui refresh between Library and Home", function()
         local fm = make_instance()
         assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("books"))
         fm.file_chooser.path = "/library"
@@ -1827,8 +1830,14 @@ describe("file browser navbar navigation", function()
         UIManager.setDirty = function(_self, _widget, mode)
             if mode == "flashui" then flash_count = flash_count + 1 end
         end
+        shared.home.resumeActive = function(refresh_type)
+            home_refresh_type = refresh_type
+            UIManager:setDirty(home_widget, refresh_type)
+            return true, "reused"
+        end
 
         assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("home"))
+        assert.are.equal("flashui", home_refresh_type)
         assert.are.equal(1, flash_count)
         assert.is_true(_G.__ZEN_UI_NAVBAR_OPEN_TAB("books"))
         assert.are.equal(2, flash_count)

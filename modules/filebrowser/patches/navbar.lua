@@ -1483,7 +1483,7 @@ local function apply_navbar()
         end)
     end
 
-    local function onTabHome()
+    local function onTabHome(refresh_type)
         if resetHomeStripPages() then return end
         local Home = get_shared("home")
         if not Home then return end
@@ -1505,10 +1505,10 @@ local function apply_navbar()
             local strips_reset = type(Home.resetStripPages) == "function"
                 and Home.resetStripPages() == true
             local resumed, resume_mode = true, "reused"
-            if can_resume then resumed, resume_mode = Home.resumeActive() end
+            if can_resume then resumed, resume_mode = Home.resumeActive(refresh_type) end
             if not resumed then
                 if type(Home.closeAll) == "function" then Home.closeAll() end
-                Home.showHomeView(injectStandaloneNavbar)
+                Home.showHomeView(injectStandaloneNavbar, refresh_type)
                 measureLibraryToHomeReveal(fm, "rebuilt", false)
             else
                 local rebuilt = resume_mode == "rebuilt" or strips_reset
@@ -1517,7 +1517,7 @@ local function apply_navbar()
             if not scheduleHiddenLibraryWarm(fm) then scheduleGroupPrewarm() end
             return
         end
-        Home.showHomeView(injectStandaloneNavbar)
+        Home.showHomeView(injectStandaloneNavbar, refresh_type)
         measureLibraryToHomeReveal(fm, "rebuilt", false)
         if not scheduleHiddenLibraryWarm(fm) then scheduleGroupPrewarm() end
     end
@@ -1733,8 +1733,8 @@ local function apply_navbar()
             local flash_library_home = fm and (
                 (tab_id == "home" and fm._zen_library_to_home_started_at)
                 or (tab_id == "books" and fm._zen_home_to_library_started_at))
-            cb()
-            if flash_library_home then
+            cb(flash_library_home and tab_id == "home" and "flashui" or nil)
+            if flash_library_home and tab_id == "books" then
                 UIManager:nextTick(function() UIManager:setDirty(nil, "flashui") end)
             end
             if tab_id ~= "home" and not tabStaysInFileManager(tab_id) then

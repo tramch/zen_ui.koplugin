@@ -3258,7 +3258,7 @@ local function consume_last_read_file()
     return true
 end
 
-function M.showHomeView(injectNavbar)
+function M.showHomeView(injectNavbar, initial_refresh_type)
     M.setCoverCacheBudget(MemoryPolicy.homeByteBudget())
     if _home_menu and not _home_menu._zen_home_closing then
         return _home_menu, false
@@ -3308,7 +3308,7 @@ function M.showHomeView(injectNavbar)
     local has_date_dependent = rows_have_date_dependent(rows)
     menu._zen_home_has_clock_refreshers = has_clock_refreshers
 
-    local function rebuild(refresh_stats)
+    local function rebuild(refresh_stats, refresh_type)
         local started_at = os.clock()
         local stats_started_at = started_at
         if data_provider and type(data_provider.resetPerformanceStats) == "function" then
@@ -3335,7 +3335,7 @@ function M.showHomeView(injectNavbar)
         menu._zen_home_needs_rebuild = nil
         menu._zen_home_refresh_stats = nil
         menu._zen_home_reload_config = nil
-        request_home_repaint(menu, "ui")
+        request_home_repaint(menu, refresh_type or "ui")
         local perf = data_provider and data_provider.getPerformanceStats
             and data_provider:getPerformanceStats() or {}
         local component_times = {}
@@ -3512,7 +3512,7 @@ function M.showHomeView(injectNavbar)
         end
     end
 
-    function menu:_home_rebuild(refresh_stats, reload_config)
+    function menu:_home_rebuild(refresh_stats, reload_config, refresh_type)
         if self._zen_home_closing then return false end
         if self._zen_home_suspended == true or not home_is_on_top(self) then
             self._zen_home_needs_rebuild = true
@@ -3539,11 +3539,11 @@ function M.showHomeView(injectNavbar)
         has_clock_refreshers = rows_have_clock_refreshers(rows, dcfg)
         has_date_dependent = rows_have_date_dependent(rows)
         self._zen_home_has_clock_refreshers = has_clock_refreshers
-        rebuild(refresh_stats == true)
+        rebuild(refresh_stats == true, refresh_type)
         return true
     end
 
-    function menu:_zen_home_resume()
+    function menu:_zen_home_resume(refresh_type)
         if self._zen_home_closing then return false, "closing" end
         if not home_is_on_top(self) then return false, "not_top" end
         if self._zen_home_screen_width ~= Screen:getWidth()
@@ -3612,14 +3612,14 @@ function M.showHomeView(injectNavbar)
 
         local rebuilt = false
         if needs_rebuild then
-            rebuilt = self:_home_rebuild(refresh_stats, reload_config) == true
+            rebuilt = self:_home_rebuild(refresh_stats, reload_config, refresh_type) == true
         end
         if self._zen_status_refresh then
             self:_zen_status_refresh(true)
         elseif has_clock_refreshers and self._zen_home_refresh_clock_widgets then
             self:_zen_home_refresh_clock_widgets(true)
         end
-        if not rebuilt then request_home_repaint(self, "ui") end
+        if not rebuilt then request_home_repaint(self, refresh_type or "ui") end
 
         logger.measure("Home retained view resumed", (now() - started_at) * 1000,
             "rebuilt=", tostring(rebuilt),
@@ -3684,7 +3684,7 @@ function M.showHomeView(injectNavbar)
 
     UIManager:show(menu)
     UIManager:nextTick(function()
-        rebuild(true)
+        rebuild(true, initial_refresh_type)
         if menu._zen_status_refresh then
             menu:_zen_status_refresh()
         end
@@ -3715,7 +3715,7 @@ function M.suspendActive()
     return true
 end
 
-function M.resumeActive()
+function M.resumeActive(refresh_type)
     local menu = _home_menu
     if not menu or menu._zen_home_closing
             or type(menu._zen_home_resume) ~= "function" then
@@ -3729,7 +3729,7 @@ function M.resumeActive()
             return true, "rebuilt"
         end
     end
-    return menu:_zen_home_resume()
+    return menu:_zen_home_resume(refresh_type)
 end
 
 function M.invalidateNavbar()
