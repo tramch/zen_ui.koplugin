@@ -250,6 +250,28 @@ function M.build(ctx)
         }
     end
 
+    local function make_page_options(setting, default, choices)
+        local sub = {}
+        for _i, choice in ipairs(choices) do
+            local value = choice[1]
+            table.insert(sub, {
+                text = choice[2],
+                radio = true,
+                checked_func = function()
+                    local cfg = config.reader_top_status_bar
+                    return ((type(cfg) == "table" and cfg[setting]) or default) == value
+                end,
+                callback = function(touchmenu_instance)
+                    if type(config.reader_top_status_bar) ~= "table" then config.reader_top_status_bar = {} end
+                    config.reader_top_status_bar[setting] = value
+                    save_clock()
+                    if touchmenu_instance then touchmenu_instance:updateItems() end
+                end,
+            })
+        end
+        return sub
+    end
+
     local function make_header_slot_items(slot_name, arrange_title)
         local order_key = slot_name .. "_order"
         local canonical = HEADER_CANONICAL[slot_name] or {}
@@ -371,6 +393,23 @@ function M.build(ctx)
                 item.checkmark_callback = item.callback
                 item.callback = nil
                 item.sub_item_table = make_header_wifi_items()
+            elseif key == "page_progress" then
+                item.checkmark_callback = item.callback
+                item.callback = nil
+                item.sub_item_table = {
+                    {
+                        text = _("Separator"),
+                        sub_item_table = make_page_options("page_separator", "slash", {
+                            { "slash", "/" }, { "of", _("of") },
+                        }),
+                    },
+                    {
+                        text = _("Total"),
+                        sub_item_table = make_page_options("page_count_scope", "book", {
+                            { "book", _("Book") }, { "chapter", _("Chapter") },
+                        }),
+                    },
+                }
             end
             table.insert(t, item)
         end

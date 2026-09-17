@@ -6431,3 +6431,11 @@ msgstr "ZenPM"
 #: zenpm_installer.lua:381
 msgid "ZenPM has been installed. Restart KOReader to use it."
 msgstr "ZenPM has been installed. Restart KOReader to use it."
+
+#. Reader page count separator
+msgid "of"
+msgstr "of"
+
+#. Reader page count format
+msgid "%1 of %2"
+msgstr "%1 of %2"

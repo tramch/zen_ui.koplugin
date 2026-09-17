@@ -15,6 +15,7 @@ describe("reader top status bar refresh", function()
     local item_fetchers
     local collect_item_texts
     local build_group_from_texts
+    local build_header
     local startup_reader
     local disabled_reader
     local NetworkMgr
@@ -272,9 +273,9 @@ describe("reader top status bar refresh", function()
             center = { x = 250, y = 0, w = 100, h = 20 },
             right = { x = 500, y = 0, w = 100, h = 20 },
         }
-        local original_build_header = get_upvalue(ReaderView.paintTo, "buildHeader")
-        collect_item_texts = get_upvalue(original_build_header, "collectItemTexts")
-        build_group_from_texts = get_upvalue(original_build_header, "buildGroupFromTexts")
+        build_header = get_upvalue(ReaderView.paintTo, "buildHeader")
+        collect_item_texts = get_upvalue(build_header, "collectItemTexts")
+        build_group_from_texts = get_upvalue(build_header, "buildGroupFromTexts")
         item_fetchers = get_upvalue(collect_item_texts, "item_fetchers")
         assert.is_true(replace_upvalue(ReaderView.paintTo, "buildHeader", function()
             return header, {}, 20, 600, slot_regions
@@ -441,6 +442,23 @@ describe("reader top status bar refresh", function()
         assert.are.equal("7", item_fetchers.current_page(context))
         assert.are.equal("120", item_fetchers.total_pages(context))
         assert.are.equal("7 / 120", item_fetchers.page_progress(context))
+
+        local cfg = _G.__ZEN_UI_PLUGIN.config.reader_top_status_bar
+        cfg.page_separator = "of"
+        assert.are.equal("7 of 120", item_fetchers.page_progress(context))
+
+        cfg.page_count_scope = "chapter"
+        context.ui.toc = {
+            getChapterPagesDone = function() return 2 end,
+            getChapterPageCount = function() return 8 end,
+        }
+        assert.are.equal("3", item_fetchers.current_page(context))
+        assert.are.equal("8", item_fetchers.total_pages(context))
+        assert.are.equal("3 of 8", item_fetchers.page_progress(context))
+        assert.are.equal("6%", item_fetchers.progress_percent(context))
+
+        context.ui.toc = nil
+        assert.are.equal("7 of 120", item_fetchers.page_progress(context))
     end)
 
     it("hides Wi-Fi only when it is off and the option is enabled", function()
@@ -476,6 +494,34 @@ describe("reader top status bar refresh", function()
 
         _G.__ZEN_UI_PLUGIN.config.reader_top_status_bar.colored = false
         assert.is_nil(collect_item_texts({ "battery" })[1].color)
+    end)
+
+    it("matches the left and right dogear spacing", function()
+        local cfg = _G.__ZEN_UI_PLUGIN.config.reader_top_status_bar
+        for _i, name in ipairs({
+            "ui/widget/container/centercontainer",
+            "ui/widget/container/leftcontainer",
+            "ui/widget/container/rightcontainer",
+            "ui/widget/horizontalspan",
+            "ui/widget/verticalgroup",
+            "ui/widget/verticalspan",
+        }) do
+            package.loaded[name].new = function(_self, values) return values or {} end
+        end
+        assert.is_true(replace_upvalue(build_header, "buildGroupFromTexts", function(texts)
+            if #texts == 0 then return nil, {} end
+            return { getSize = function() return { w = 10, h = 18 } end }, {}
+        end))
+
+        for _i, center_order in ipairs({ {}, { "wifi" } }) do
+            cfg.center_order = center_order
+            local header, _, _, _, slots = build_header({
+                dogear = { icon = { dimen = { x = 550, w = 50 } } },
+            })
+            assert.are.equal(60, header[1][1][1].width)
+            assert.are.equal(60, header[#header][1][2].width)
+            assert.are.equal(slots.left.w, slots.right.w)
+        end
     end)
 
     it("hides reflowable headers in scroll mode and keeps the fixed-layout overlay optional", function()

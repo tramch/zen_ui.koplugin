@@ -25,6 +25,7 @@ local function apply_reader_top_status_bar()
     local Geom     = require("ui/geometry")
     local Device   = require("device")
     local Font     = require("ui/font")
+    local T        = require("ffi/util").template
     local datetime = require("datetime")
     local UIManager = require("ui/uimanager")
     local zen_utils = require("common/utils")
@@ -310,19 +311,40 @@ local function apply_reader_top_status_bar()
         return pageno, pages, pageno, pages
     end
 
+    local function getDisplayPageInfo(doc_ctx)
+        local current, total, pageno = getPageInfo(doc_ctx)
+        local cfg = zen_plugin and zen_plugin.config and zen_plugin.config.reader_top_status_bar
+        if type(cfg) ~= "table" or cfg.page_count_scope ~= "chapter" then
+            return current, total
+        end
+        local toc = doc_ctx and doc_ctx.ui and doc_ctx.ui.toc
+        if not (toc and pageno and type(toc.getChapterPagesDone) == "function"
+                and type(toc.getChapterPageCount) == "function") then
+            return current, total
+        end
+        local done = toc:getChapterPagesDone(pageno)
+        local count = toc:getChapterPageCount(pageno)
+        if done == nil or not count or count <= 0 then return current, total end
+        return done + 1, count
+    end
+
     local function getPageProgressItem(doc_ctx)
-        local current, total = getPageInfo(doc_ctx)
+        local current, total = getDisplayPageInfo(doc_ctx)
         if current == nil or total == nil then return nil end
+        local cfg = zen_plugin and zen_plugin.config and zen_plugin.config.reader_top_status_bar
+        if type(cfg) == "table" and cfg.page_separator == "of" then
+            return T(_("%1 of %2"), current, total), nil
+        end
         return ("%s / %s"):format(current, total), nil
     end
 
     local function getCurrentPageItem(doc_ctx)
-        local current = getPageInfo(doc_ctx)
+        local current = getDisplayPageInfo(doc_ctx)
         return current ~= nil and tostring(current) or nil, nil
     end
 
     local function getTotalPagesItem(doc_ctx)
-        local total = select(2, getPageInfo(doc_ctx))
+        local total = select(2, getDisplayPageInfo(doc_ctx))
         return total ~= nil and tostring(total) or nil, nil
     end
 
@@ -667,7 +689,7 @@ local function apply_reader_top_status_bar()
         local center_nat = measureTextsWidth(center_texts, face, center_sep)
         local right_nat = measureTextsWidth(right_texts, face, right_sep)
 
-        local left_pad = left_has and h_pad or 0
+        local left_pad = left_has and h_pad + right_inset or 0
         local right_pad = right_has and h_pad + right_inset or 0
 
         local left_cap = 0
@@ -748,7 +770,7 @@ local function apply_reader_top_status_bar()
                 table.insert(header, LeftContainer:new{
                     dimen = Geom:new{ w = left_w, h = header_h },
                     HorizontalGroup:new{
-                        HorizontalSpan:new{ width = h_pad },
+                        HorizontalSpan:new{ width = left_pad },
                         padded(left_grp),
                     },
                 })
@@ -776,7 +798,7 @@ local function apply_reader_top_status_bar()
                 table.insert(header, LeftContainer:new{
                     dimen = Geom:new{ w = left_w, h = header_h },
                     HorizontalGroup:new{
-                        HorizontalSpan:new{ width = h_pad },
+                        HorizontalSpan:new{ width = left_pad },
                         padded(left_grp),
                     },
                 })
@@ -801,7 +823,7 @@ local function apply_reader_top_status_bar()
 
         local slot_regions = {}
         if left_grp then
-            local left_content_w = math.min(screen_width, h_pad + left_grp:getSize().w)
+            local left_content_w = math.min(screen_width, left_pad + left_grp:getSize().w)
             slot_regions.left = Geom:new{ x = 0, y = 0, w = left_content_w, h = header_h }
         end
         if center_grp then
