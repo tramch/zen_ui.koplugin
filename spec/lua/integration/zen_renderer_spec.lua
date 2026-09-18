@@ -104,6 +104,7 @@ describe("Zen renderer", function()
         ZenSpec.replace("ui/widget/container/alphacontainer", widget_class())
         ZenSpec.replace("ui/widget/container/bottomcontainer", widget_class("bottom"))
         ZenSpec.replace("ui/widget/container/framecontainer", widget_class())
+        ZenSpec.replace("ui/widget/iconwidget", widget_class())
         local WidgetContainer = class()
         function WidgetContainer:getSize() return self.dimen end
         ZenSpec.replace("ui/widget/container/widgetcontainer", WidgetContainer)
@@ -216,6 +217,13 @@ describe("Zen renderer", function()
             BORDER_SIZE = 2,
             getRatio = function() return 2 / 3 end,
             calcDims = function(width, height) return calc_dimensions(width, height) end,
+            getUpvalue = function(fn, target)
+                for index = 1, 64 do
+                    local name, value = debug.getupvalue(fn, index)
+                    if not name then return end
+                    if name == target then return value end
+                end
+            end,
         })
         ZenSpec.replace("modules/filebrowser/patches/home/widgets/cover_common", {
             BORDER_SIZE = 2,
@@ -414,6 +422,38 @@ describe("Zen renderer", function()
 
         assert.are.equal("complete", item._zen_effective_status)
         assert.are.equal(1, dimmed)
+    end)
+
+    it("dims only the cover in list views", function()
+        local ListMenuItem = {
+            update = function() end,
+            paintTo = function() end,
+        }
+        local function stock_builder() return ListMenuItem end
+        ZenSpec.replace("listmenu", { _updateItemsBuildUI = stock_builder })
+        ZenSpec.replace("covermenu", { updateItems = function() end })
+        ZenSpec.replace("readcollection", {})
+        ZenSpec.replace("util", {})
+        ZenSpec.replace("apps/filemanager/filemanagerutil", {})
+        ZenSpec.replace("apps/filemanager/filemanager", { setupLayout = function() end })
+        ZenSpec.replace("ui/widget/container/rightcontainer", class())
+        _G.__ZEN_UI_PLUGIN.config.browser_cover_badges = { dim_finished_books = true }
+        ZenSpec.unload("modules/filebrowser/patches/browser_list_item_layout")
+        require("modules/filebrowser/patches/browser_list_item_layout")()
+
+        local dimmed
+        ListMenuItem.paintTo({
+            entry = {},
+            _zen_effective_status = "complete",
+            _cover_frame = {
+                dimen = { x = 11, y = 22, w = 30, h = 40 },
+                bordersize = 2,
+            },
+        }, {
+            lightenRect = function(_bb, ...) dimmed = { ... } end,
+        }, 100, 200)
+
+        assert.are.same({ 13, 24, 26, 36, 0.4 }, dimmed)
     end)
 
     it("uses an exact shared real cover without requesting the decoded blob", function()
