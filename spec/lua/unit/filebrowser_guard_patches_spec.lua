@@ -641,6 +641,10 @@ describe("file browser guard patches", function()
         Menu.updateItems({ name = "history", layout = { { hidden } } })
         assert.are.equal("white", hidden._underline_container.color)
 
+        local unrelated = { _underline_container = { color = "black" } }
+        Menu.updateItems({ layout = { { unrelated } } })
+        assert.are.equal("black", unrelated._underline_container.color)
+
         local classic = { _underline_container = { color = "black" } }
         Menu.updateItems({ name = "filemanager", layout = { { classic } } })
         assert.are.equal("black", classic._underline_container.color)
@@ -658,7 +662,7 @@ describe("file browser guard patches", function()
         assert.are.equal("white", list_item._underline_container.color)
         ListMenuItem.onFocus(list_item)
         assert.are.equal("black", list_item._underline_container.color)
-        assert.are.same({ 2, 1 }, { menu_updates, cover_updates })
+        assert.are.same({ 3, 1 }, { menu_updates, cover_updates })
     end)
 
     it("avoids repainting one-page menus but delegates multi-page navigation", function()
