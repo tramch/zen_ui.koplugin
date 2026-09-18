@@ -57,7 +57,7 @@ local function apply_browser_hide_up_folder()
 
     function FileChooser:genItemTable(dirs, files, path)
         local item_table = orig_FileChooser_genItemTable(self, dirs, files, path)
-        if self._dummy or self.name ~= "filemanager" then
+        if self._dummy or self.name ~= "filemanager" or type(path) ~= "string" then
             return item_table
         end
 

@@ -460,6 +460,9 @@ describe("file browser guard patches", function()
         }
         setmetatable(chooser, { __index = FileChooser })
 
+        local search_items = FileChooser.genItemTable(chooser, {}, {})
+        assert.are.equal(2, #search_items)
+
         local items = FileChooser.genItemTable(chooser, {}, {}, "/library/series")
         assert.are.equal(1, #items)
         assert.are.equal("Book", items[1].text)

@@ -35,11 +35,17 @@ local function command_ok(command)
     return ok == true or ok == 0 or code == 0
 end
 
-local function query_bool(command)
+local function query(command)
     local pipe = io.popen(command .. " 2>/dev/null", "r")
     if not pipe then return nil end
     local output = pipe:read("*a") or ""
     pipe:close()
+    return output
+end
+
+local function query_bool(command)
+    local output = query(command)
+    if not output then return nil end
     if output:find("boolean true", 1, true) then return true end
     if output:find("boolean false", 1, true) then return false end
 end
@@ -57,6 +63,41 @@ local function property(device_kind, value)
     return dbus(device_kind, ADAPTER, PROPERTIES .. "." .. (value == nil and "Get" or "Set"),
         " string:org.bluez.Adapter1 string:Powered"
         .. (value == nil and "" or " variant:boolean:" .. tostring(value)))
+end
+
+local function reconnect_paired(device_kind)
+    local output = query(dbus(device_kind, "/", "org.freedesktop.DBus.ObjectManager.GetManagedObjects"))
+    if not output then return end
+
+    local path, property_name
+    local paired, connected = false, false
+    local function connect()
+        if path and paired and not connected then
+            os.execute(dbus(device_kind, path, "org.bluez.Device1.Connect") .. " >/dev/null 2>&1 &")
+        end
+    end
+
+    for line in output:gmatch("[^\r\n]+") do
+        local next_path = line:match('object path "(/org/bluez/hci0/dev_[%w_]+)"')
+        if next_path then
+            connect()
+            path, property_name = next_path, nil
+            paired, connected = false, false
+        elseif path then
+            if line:find('string "Paired"', 1, true) then
+                property_name = "paired"
+            elseif line:find('string "Connected"', 1, true) then
+                property_name = "connected"
+            end
+            local value = line:match("variant%s+boolean%s+(%w+)")
+            if value and property_name then
+                if property_name == "paired" then paired = value == "true" end
+                if property_name == "connected" then connected = value == "true" end
+                property_name = nil
+            end
+        end
+    end
+    connect()
 end
 
 local function read_state(device_kind)
@@ -146,6 +187,7 @@ function M.setEnabled(enabled, complete)
         cached_at = nil
         if success then
             if enabled then
+                reconnect_paired(device_kind)
                 UIManager:preventStandby()
                 owned = true
             elseif owned then

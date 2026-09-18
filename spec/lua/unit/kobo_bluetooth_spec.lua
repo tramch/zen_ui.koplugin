@@ -2,7 +2,7 @@ describe("Kobo Bluetooth control", function()
     local saved_modules, saved_plugin
     local open_stub, popen_stub, execute_stub
     local device, bluetooth, scheduled, commands, events, wifi_restored, wifi_disabled
-    local owner, powered, prevented, allowed
+    local owner, powered, prevented, allowed, managed_objects
 
     before_each(function()
         saved_modules = {}
@@ -15,6 +15,7 @@ describe("Kobo Bluetooth control", function()
         saved_plugin = rawget(_G, "__ZEN_UI_PLUGIN")
         _G.__ZEN_UI_PLUGIN = nil
         owner, powered = false, false
+        managed_objects = ""
         prevented, allowed = 0, 0
         wifi_restored, wifi_disabled = 0, 0
         scheduled, commands, events = {}, {}, {}
@@ -50,6 +51,12 @@ describe("Kobo Bluetooth control", function()
             end
         end)
         popen_stub = stub(io, "popen", function(command)
+            if command:find("GetManagedObjects", 1, true) then
+                return {
+                    read = function() return managed_objects end,
+                    close = function() end,
+                }
+            end
             local value = command:find("NameHasOwner", 1, true) and owner or powered
             return {
                 read = function() return "   boolean " .. tostring(value) end,
@@ -78,6 +85,40 @@ describe("Kobo Bluetooth control", function()
         end
     end)
 
+    it("reconnects paired devices after powering Bluetooth on", function()
+        managed_objects = [[
+ object path "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"
+  string "Paired"
+   variant boolean true
+  string "Connected"
+   variant boolean false
+ object path "/org/bluez/hci0/dev_11_22_33_44_55_66"
+  string "Paired"
+   variant boolean true
+  string "Connected"
+   variant boolean true
+ object path "/org/bluez/hci0/dev_77_88_99_AA_BB_CC"
+  string "Paired"
+   variant boolean false
+  string "Connected"
+   variant boolean false
+]]
+
+        assert.is_true(bluetooth.setEnabled(true))
+        scheduled[1].callback()
+
+        local all_commands = table.concat(commands, "\n")
+        assert.is_true(all_commands:find(
+            "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF org.bluez.Device1.Connect", 1, true
+        ) ~= nil)
+        assert.is_nil(all_commands:find(
+            "/org/bluez/hci0/dev_11_22_33_44_55_66 org.bluez.Device1.Connect", 1, true
+        ))
+        assert.is_nil(all_commands:find(
+            "/org/bluez/hci0/dev_77_88_99_AA_BB_CC org.bluez.Device1.Connect", 1, true
+        ))
+    end)
+
     it("powers MTK Bluetooth after waking Wi-Fi, then restores Wi-Fi and suspends safely", function()
         assert.is_true(bluetooth.isAvailable())
         assert.is_false(bluetooth.getState())
@@ -104,12 +145,22 @@ describe("Kobo Bluetooth control", function()
 
     it("uses the Libra 2 BlueZ startup and shutdown path", function()
         device.model = "Kobo_io"
+        managed_objects = [[
+ object path "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"
+  string "Paired"
+   variant boolean true
+  string "Connected"
+   variant boolean false
+]]
         assert.is_true(bluetooth.isAvailable())
         assert.is_false(bluetooth.getState())
         assert.is_true(bluetooth.setEnabled(true))
         assert.is_true(bluetooth.getState())
         assert.are.equal(0, wifi_restored)
         assert.is_true(table.concat(commands, "\n"):find("rtk_hciattach", 1, true) ~= nil)
+        assert.is_true(table.concat(commands, "\n"):find(
+            "--dest=org.bluez /org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF org.bluez.Device1.Connect", 1, true
+        ) ~= nil)
         assert.is_true(bluetooth.setEnabled(false))
         assert.is_false(bluetooth.getState())
         assert.are.equal(1, allowed)
