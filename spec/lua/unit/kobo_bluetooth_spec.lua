@@ -26,7 +26,7 @@ describe("Kobo Bluetooth control", function()
         }
         ZenSpec.replace("device", device)
         ZenSpec.replace("common/zen_logger", {
-            new = function() return { warn = function() end } end,
+            new = function() return { info = function() end, warn = function() end } end,
         })
         ZenSpec.replace("ui/uimanager", {
             scheduleIn = function(_self, delay, callback)
@@ -86,7 +86,7 @@ describe("Kobo Bluetooth control", function()
     end)
 
     it("reconnects paired devices after powering Bluetooth on", function()
-        managed_objects = [[
+        local discovered_devices = [[
  object path "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"
   string "Paired"
    variant boolean true
@@ -106,6 +106,12 @@ describe("Kobo Bluetooth control", function()
 
         assert.is_true(bluetooth.setEnabled(true))
         scheduled[1].callback()
+        assert.is_true(table.concat(commands, "\n"):find("Adapter1.StartDiscovery", 1, true) ~= nil)
+        assert.is_nil(table.concat(commands, "\n"):find("org.bluez.Device1.Connect", 1, true))
+
+        managed_objects = discovered_devices
+        assert.are.equal(1, scheduled[2].delay)
+        scheduled[2].callback()
 
         local all_commands = table.concat(commands, "\n")
         assert.is_true(all_commands:find(
@@ -117,6 +123,9 @@ describe("Kobo Bluetooth control", function()
         assert.is_nil(all_commands:find(
             "/org/bluez/hci0/dev_77_88_99_AA_BB_CC org.bluez.Device1.Connect", 1, true
         ))
+
+        for _i = 3, 10 do scheduled[_i].callback() end
+        assert.is_true(table.concat(commands, "\n"):find("Adapter1.StopDiscovery", 1, true) ~= nil)
     end)
 
     it("powers MTK Bluetooth after waking Wi-Fi, then restores Wi-Fi and suspends safely", function()
@@ -141,6 +150,7 @@ describe("Kobo Bluetooth control", function()
         assert.is_false(bluetooth.getState())
         assert.are.equal(1, allowed)
         assert.is_false(events[2].data.state)
+        assert.is_true(table.concat(commands, "\n"):find("Adapter1.StopDiscovery", 1, true) ~= nil)
     end)
 
     it("uses the Libra 2 BlueZ startup and shutdown path", function()
