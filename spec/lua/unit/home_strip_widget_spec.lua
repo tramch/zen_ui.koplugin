@@ -56,7 +56,7 @@ describe("home strip widget", function()
         ZenSpec.replace("common/ui/background", { tile_bg = function(color) return color end })
         ZenSpec.replace("ffi/blitbuffer", {
             COLOR_BLACK = "black", COLOR_WHITE = "white", COLOR_LIGHT_GRAY = "lightgray",
-            COLOR_GRAY_6 = "gray6",
+            COLOR_GRAY_6 = "gray6", COLOR_DARK_GRAY = "darkgray",
         })
         ZenSpec.replace("common/ui/corner_banner", { paint = function() end })
         ZenSpec.replace("ui/geometry", {
@@ -1708,7 +1708,7 @@ describe("home strip widget", function()
         })
     end)
 
-    it("reserves a page dots band and paints round dots for a multi-page source", function()
+    it("reserves a page dots band and paints Library-style dots for a multi-page source", function()
         local books = {}
         for i = 1, 4 do
             books[i] = { path = "/library/" .. tostring(i) .. ".epub" }
@@ -1750,20 +1750,31 @@ describe("home strip widget", function()
         assert.are.equal(plain_bounds.bottom + 16, paged_bounds.bottom)
         assert.are.equal(400 - paged_bounds.bottom, paged_bounds.max_shift)
 
-        local circles = {}
+        -- Dots are scanline pills like the Library pager's "dots" style: 10 px,
+        -- 12 px apart, current page black, the others dark gray.
+        local rows = {}
         local bb = {
-            paintCircle = function(_bb, cx, cy, r, color, ring)
-                circles[#circles + 1] = { cx = cx, cy = cy, r = r, color = color, ring = ring }
+            paintRect = function(_bb, x, y, w, h, color)
+                rows[#rows + 1] = { x = x, y = y, w = w, h = h, color = color }
             end,
         }
         plain_frame:paintTo(bb, 0, 0)
-        assert.are.same({}, circles)
+        assert.are.same({}, rows)
         paged_frame:paintTo(bb, 0, 0)
-        assert.are.same({
-            -- page 1: a 1 px ring; page 2 (current): filled
-            { cx = 290, cy = plain_bounds.bottom + 6 + 5, r = 5, color = "black", ring = 1 },
-            { cx = 310, cy = plain_bounds.bottom + 6 + 5, r = 5, color = "black" },
-        }, circles)
+        assert.are.equal(20, #rows)
+        local dot_top = plain_bounds.bottom + 6
+        -- two dots span 10 + 12 + 10 = 32 px centred in 600: x = 284 and 306
+        local extents = { darkgray = { 284, 294 }, black = { 306, 316 } }
+        local per_color = { darkgray = 0, black = 0 }
+        for _i, row in ipairs(rows) do
+            local span = extents[row.color]
+            assert.is_table(span, "unexpected dot color " .. tostring(row.color))
+            per_color[row.color] = per_color[row.color] + 1
+            assert.are.equal(1, row.h)
+            assert.is_true(row.y >= dot_top and row.y < dot_top + 10, "row outside the dot band")
+            assert.is_true(row.x >= span[1] and row.x + row.w <= span[2], "row outside its dot")
+        end
+        assert.are.same({ darkgray = 10, black = 10 }, per_color)
     end)
 
     it("supplies the selected strip cover before opening its book", function()
