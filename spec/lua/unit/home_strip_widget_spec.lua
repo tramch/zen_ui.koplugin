@@ -619,7 +619,8 @@ describe("home strip widget", function()
                     and widget.height == 30 and widget.bordersize == 2 then
                 controls_width = widget.width
             elseif widget.kind == "ui/widget/container/leftcontainer"
-                    and widget.dimen.w == 580 and widget.dimen.h == 205 then
+                    -- 300 - 48 controls - 18 gap - 8 pads - 18 page dots band - 8 row pads
+                    and widget.dimen.w == 580 and widget.dimen.h == 200 then
                 row_width = widget.dimen.w
             end
         end
@@ -646,7 +647,7 @@ describe("home strip widget", function()
             })
             for i = first_created, #created do
                 local widget = created[i]
-                if widget.dimen.w == 580 and widget.dimen.h == 205 then
+                if widget.dimen.w == 580 and widget.dimen.h == 200 then
                     return widget.kind
                 end
             end
@@ -684,9 +685,10 @@ describe("home strip widget", function()
             return heights
         end
 
-        assert.are.same({ 205, 205, 205, 205 }, cover_heights(4))
-        assert.are.same({ 205, 205 }, cover_heights(2))
-        assert.are.same({ 205 }, cover_heights(1))
+        -- Height-limited once the page dots band is reserved: 300 - 48 - 18 - 8 - 18 - 8.
+        assert.are.same({ 200, 200, 200, 200 }, cover_heights(4))
+        assert.are.same({ 200, 200 }, cover_heights(2))
+        assert.are.same({ 200 }, cover_heights(1))
     end)
 
     it("keeps controls and covers in one fixed-gap visual group", function()
@@ -1866,7 +1868,8 @@ describe("home strip widget", function()
         assert.are.same({ 0.05 }, scheduled_delays)
         run_scheduled()
 
-        assert.are.same({ book = book, width = 80, height = 144 }, warmed)
+        -- 160 - 8 pads - 18 page dots band - 8 row pads
+        assert.are.same({ book = book, width = 80, height = 126 }, warmed)
         assert.are.equal(2, #cover_books)
         assert.are.equal(1, refreshed)
         assert.are.equal(0, #scheduled)
