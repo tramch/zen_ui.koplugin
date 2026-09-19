@@ -5,6 +5,9 @@ local M = {}
 local MTK_SERVICE = "com.kobo.mtk.bluedroid"
 local ADAPTER = "/org/bluez/hci0"
 local PROPERTIES = "org.freedesktop.DBus.Properties"
+local SAGE_RFKILL = "/sys/devices/platform/bt/rfkill/rfkill0/state"
+local SAGE_HCI_LOG = "/tmp/zenos-rtk-hciattach.log"
+local SAGE_BLUEZ_LOG = "/tmp/zenos-bluetoothd.log"
 local owned = false
 local pending
 local discovery_kind, discovery_poll
@@ -24,6 +27,7 @@ end
 local function kind()
     if not (Device.isKobo and Device:isKobo()) then return nil end
     if Device.model == "Kobo_io" then return "libra2" end
+    if Device.model == "Kobo_cadmus" then return "sage" end
     if Device.isMTK and Device:isMTK() then
         local file = io.open("/usr/share/dbus-1/system-services/" .. MTK_SERVICE .. ".service", "r")
         if file then
@@ -151,6 +155,14 @@ local function log_processes(device_kind, context)
         "matches=", #matches, "data=", #matches > 0 and table.concat(matches, " | ") or "none")
 end
 
+local function log_sage_daemons(context)
+    for _i, path in ipairs({ SAGE_HCI_LOG, SAGE_BLUEZ_LOG }) do
+        local output = query("tail -n 80 " .. path, "sage-log-" .. tostring(_i) .. "-" .. context, true)
+        logger.info("Sage daemon log context=", context, "path=", path,
+            "data=", compact(output, 2400))
+    end
+end
+
 local function reconnect_paired(device_kind, attempted, poll)
     local output = query(dbus(device_kind, "/", "org.freedesktop.DBus.ObjectManager.GetManagedObjects"),
         "managed-objects-poll-" .. tostring(poll), true)
@@ -230,6 +242,7 @@ local function stop_discovery()
         "discovery-stop")
     logger.info("discovery stopped kind=", device_kind, "success=", tostring(success))
     log_adapter(device_kind, "after-discovery-stop")
+    if device_kind == "sage" then log_sage_daemons("after-discovery-stop") end
 end
 
 local function start_reconnect(device_kind)
@@ -314,6 +327,45 @@ local function power(device_kind, enabled)
         end
         return enabled or command_ok(dbus("mtk", "/", "com.kobo.bluetooth.BluedroidManager1.Off"),
             "mtk-manager-off")
+    end
+
+    if device_kind == "sage" then
+        local function stop_stack(operation)
+            return command_ok("hciconfig hci0 down 2>/dev/null; "
+                .. "killall bluetoothd 2>/dev/null; killall rtk_hciattach 2>/dev/null; "
+                .. "i=0; while [ $i -lt 30 ] && (pgrep bluetoothd >/dev/null"
+                .. " || pgrep rtk_hciattach >/dev/null); do sleep 0.1; i=$((i+1)); done; "
+                .. "echo 0 > " .. SAGE_RFKILL, operation)
+        end
+        local function start_step(command, operation)
+            if command_ok(command, operation) then return true end
+            stop_stack("sage-start-rollback")
+            return false
+        end
+        if enabled then
+            if not start_step("killall rtk_hciattach 2>/dev/null; killall bluetoothd 2>/dev/null; "
+                    .. "hciconfig hci0 down 2>/dev/null; true", "sage-stack-reset") then return false end
+            if not start_step("echo 0 > " .. SAGE_RFKILL .. " && sleep 1 && echo 1 > "
+                    .. SAGE_RFKILL, "sage-radio-power-cycle") then return false end
+            if not start_step("/sbin/rtk_hciattach -n -s 115200 /dev/ttyS1 rtk_h5"
+                    .. " > " .. SAGE_HCI_LOG .. " 2>&1 &", "sage-hci-attach") then return false end
+            if not start_step("i=0; while [ $i -lt 50 ] && [ ! -e /sys/class/bluetooth/hci0 ]; "
+                    .. "do sleep 0.1; i=$((i+1)); done; test -e /sys/class/bluetooth/hci0",
+                    "sage-hci-wait") then return false end
+            if not start_step("hciconfig hci0 up", "sage-hci-up") then return false end
+            if not start_step("setsid /libexec/bluetooth/bluetoothd -n -d"
+                    .. " > " .. SAGE_BLUEZ_LOG .. " 2>&1 &", "sage-bluetoothd-start") then return false end
+            if not start_step("i=0; while [ $i -lt 50 ] && ! " .. property("sage")
+                    .. " >/dev/null 2>&1; do sleep 0.1; i=$((i+1)); done",
+                    "sage-adapter-wait") then return false end
+            if not start_step(property("sage", true), "sage-adapter-power-on") then return false end
+            return start_step("hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'",
+                "sage-hci-verify")
+        end
+
+        local adapter_off = command_ok(property("sage", false), "sage-adapter-power-off")
+        local stack_off = stop_stack("sage-stack-stop")
+        return adapter_off and stack_off
     end
 
     if enabled then
@@ -419,6 +471,9 @@ function M.setEnabled(enabled, complete)
         logger.info("power request result kind=", device_kind, "requested=", tostring(enabled),
             "command_success=", tostring(success), "verified_state=", tostring(verified))
         log_processes(device_kind, enabled and "after-power-on" or "after-power-off")
+        if device_kind == "sage" then
+            log_sage_daemons(enabled and "after-power-on" or "after-power-off")
+        end
         if success and verified ~= enabled then
             logger.warn("power verification mismatch requested=", tostring(enabled),
                 "verified_state=", tostring(verified))

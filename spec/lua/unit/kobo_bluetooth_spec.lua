@@ -176,6 +176,29 @@ describe("Kobo Bluetooth control", function()
         assert.are.equal(1, allowed)
     end)
 
+    it("uses the Sage Realtek BlueZ startup and shutdown path", function()
+        device.model = "Kobo_cadmus"
+        device.isMTK = function() return false end
+
+        assert.is_true(bluetooth.isAvailable())
+        assert.is_false(bluetooth.getState())
+        assert.is_true(bluetooth.setEnabled(true))
+        assert.is_true(bluetooth.getState())
+        assert.are.equal(0, wifi_restored)
+
+        local all_commands = table.concat(commands, "\n")
+        assert.is_true(all_commands:find("rfkill/rfkill0/state", 1, true) ~= nil)
+        assert.is_true(all_commands:find("rtk_hciattach -n -s 115200 /dev/ttyS1 rtk_h5", 1, true) ~= nil)
+        assert.is_true(all_commands:find("--dest=org.bluez", 1, true) ~= nil)
+        assert.is_nil(all_commands:find("--dest=com.kobo.mtk.bluedroid", 1, true))
+
+        assert.is_true(bluetooth.setEnabled(false))
+        assert.is_false(bluetooth.getState())
+        assert.are.equal(1, allowed)
+        assert.is_true(table.concat(commands, "\n"):find("echo 0 > "
+            .. "/sys/devices/platform/bt/rfkill/rfkill0/state", 1, true) ~= nil)
+    end)
+
     it("keeps the control off unsupported devices", function()
         device.isKobo = function() return false end
         assert.is_false(bluetooth.isAvailable())

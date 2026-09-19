@@ -3865,6 +3865,12 @@ msgstr "Оранжевый"
 msgid "Order"
 msgstr "Порядок"
 
+#. Type: label
+#. Context: order_buttons[#order_buttons + 1] = {{ text = "\u{F0DC} " .. _("Order TBR"), align = "left",
+#: group_view.lua:917
+msgid "Order TBR"
+msgstr "Упорядочить список «К прочтению»"
+
 #. Type: setting
 #. Context: { id = "divider", text = _("Divider") }, { id = "outline", text = _("Outline") }, { id = "none", text = _("None") },
 #: stats_settings.lua:257

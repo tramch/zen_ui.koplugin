@@ -15,6 +15,7 @@ describe("file browser group views", function()
     local legacy_tbr_calls
     local tbr_collection_changes
     local tbr_get_options
+    local tbr_order_options
     local status_get
     local select_menu_calls
     local home_rebuilds
@@ -69,6 +70,7 @@ describe("file browser group views", function()
         legacy_tbr_calls = 0
         tbr_collection_changes = 0
         tbr_get_options = nil
+        tbr_order_options = nil
         status_get = nil
         select_menu_calls = 0
         home_rebuilds = 0
@@ -162,6 +164,7 @@ describe("file browser group views", function()
             collectionName = function() return "To Be Read" end,
             isExplicit = function() return false end,
             isAuditComplete = function() return true end,
+            showOrder = function(options) tbr_order_options = options end,
         })
         ZenSpec.replace("bookinfomanager", {
             getSetting = function() return nil end,
@@ -486,6 +489,22 @@ describe("file browser group views", function()
         assert.is_false(tbr_get_options.reverse)
         assert.are.equal(1, tbr_collection_changes)
         assert.are.equal(2, find_menu("to_be_read").update_count)
+    end)
+
+    it("opens manual TBR ordering from the sort order menu", function()
+        install_group_view({ tbr = { "/a.epub" } })
+        package.loaded.device.isTouchDevice = function() return true end
+        api.showTBRView()
+
+        local menu = assert(find_menu("to_be_read"))
+        menu:onZenTBRBlankHold()
+        file_dialog_args._zen_sort_cb()
+        dialogs[#dialogs].buttons[6][1].callback()
+
+        local order_dialog = dialogs[#dialogs]
+        assert.are.equal("\u{F0DC}  Order TBR", order_dialog.buttons[3][1].text)
+        order_dialog.buttons[3][1].callback()
+        assert.is_table(tbr_order_options)
     end)
 
     it("names the group metadata when a detail page has no books", function()

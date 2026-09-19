@@ -912,6 +912,16 @@ local function showDetailSortDialog(group_name, tab_id, menu, files, reload_file
                     end,
                 }},
             }
+            if tab_id == "to_be_read" then
+                order_buttons[#order_buttons + 1] = {{
+                    text = "\u{F0DC}  " .. _("Order TBR"),
+                    align = "left",
+                    callback = function()
+                        UIManager:close(order_dialog)
+                        require("common/tbr_index").showOrder({ plugin = _zen_plugin })
+                    end,
+                }}
+            end
             order_dialog = ButtonDialog:new{
                 title       = _("Sort order"),
                 title_align = "center",

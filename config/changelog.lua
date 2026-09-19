@@ -358,6 +358,7 @@ return {
         "Show finished badge on finished books with dimmed covers",
         "Option to exclude CBZ/CBR from Reading Goals",
         "Option to exclude Rakuyomi comics from history/home",
-        "Open KOReader + menu outside home in context menu"
+        "Open KOReader + menu outside home in context menu",
+        "Add manual order TBR (TBR Context menu > Sort > Order)"
      }
 }
