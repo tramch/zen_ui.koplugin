@@ -104,12 +104,11 @@ local function strip_layout_metrics(outer_width, module_cfg)
     -- Page dots band under the covers. Reserved whenever the indicator is
     -- enabled (whether or not the current source has more than one page), so
     -- the row keeps one height on every source and the dots always have room.
-    -- Dot size and spacing are the Library pager's "dots" style
-    -- (common/ui/zen_pager DOT_DIAM / DOT_GAP), so both indicators look alike.
+    -- Use the Library pager's dot spacing, with smaller dots below the covers.
     local show_page_dots = module_cfg.show_page_indicator ~= false
-    local dot_diam = show_page_dots and math.max(6, Screen:scaleBySize(10)) or 0
+    local dot_diam = show_page_dots and math.max(6, Screen:scaleBySize(8)) or 0
     local dot_gap = show_page_dots and math.max(6, Screen:scaleBySize(12)) or 0
-    local dot_gap_above = show_page_dots and math.max(4, Screen:scaleBySize(6)) or 0
+    local dot_gap_above = show_page_dots and math.max(4, Screen:scaleBySize(12)) or 0
     local dot_gap_below = show_page_dots and math.max(2, Screen:scaleBySize(2)) or 0
     local screen_w = tonumber(Screen:getWidth()) or outer_width
     local screen_h = tonumber(Screen:getHeight()) or outer_width
@@ -257,7 +256,7 @@ local function page_info_for(ctx, module_cfg, source, count)
 end
 
 -- One filled dot, scanline-painted exactly like zen_pager.paintPill does for
--- a square, so a strip dot and a Library dot are the same pixels.
+-- a square, so the strip dots keep the Library pager's shape.
 local function paint_dot(bb, px, py, d, color)
     local r = d / 2
     for row = 0, d - 1 do
